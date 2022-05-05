@@ -11,6 +11,7 @@ from transformers import (
     AutoTokenizer,
     get_linear_schedule_with_warmup,
 )
+from transformers.models.distilbert.modeling_distilbert import DistilBertModel, create_sinusoidal_embeddings
 
 #####################################################################################################################
 # taken from https://pytorch-lightning.readthedocs.io/en/stable/notebooks/lightning_examples/text-transformers.html #
@@ -36,11 +37,24 @@ class NLITransformer(LightningModule):
 
         self.save_hyperparameters()
 
-        self.model = AutoModel.from_pretrained('distilbert-base-uncased')
+        self.model:DistilBertModel = AutoModel.from_pretrained('distilbert-base-uncased')
+
+        # would be better to get those programatically
+        max_pos_embeddings = 512
+        embedding_dim = 768
+
+        self.pos_emb = torch.empty((max_pos_embeddings, embedding_dim))
+        create_sinusoidal_embeddings(n_pos=max_pos_embeddings, dim=embedding_dim, out=self.pos_emb)
 
 
-    def forward(self, **inputs):
-        # create transformer input (need to check if distilbert add pos encoding on its own (don't think it does))
+    def forward(self, input_ids:torch.Tensor, token_type_ids:torch.Tensor, attention_mask:torch.Tensor):
+        # create transformer input pos encoding + seg encoding + embedding
+
+        embeddings = word_embeddings + position_embeddings + segment_embeddings # (bs, max_seq_length, dim)
+        embeddings = self.LayerNorm(embeddings)  # (bs, max_seq_length, dim)
+        embeddings = self.dropout(embeddings)  # (bs, max_seq_length, dim)
+
+        self.model.forward(attem)
 
         return self.model(**inputs)
 
