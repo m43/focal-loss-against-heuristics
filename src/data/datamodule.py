@@ -24,8 +24,7 @@ class ExperimentDataModule(pl.LightningDataModule):
 
         self.batch_size = batch_size
         self.num_workers = num_workers
-        # we must replace with bert because we want token type ids
-        self.tokenizer_str = PRETRAINED_MODEL_ID.replace("distilbert", "bert")
+        self.tokenizer_str = PRETRAINED_MODEL_ID
 
         # attributes that may be downloaded and are initialized
         # in prepare data

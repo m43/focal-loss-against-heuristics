@@ -2,45 +2,42 @@ import torch
 from pytorch_lightning import LightningModule
 
 from torch import nn
-from transformers import DistilBertPreTrainedModel, DistilBertModel, AdamW, get_linear_schedule_with_warmup
+from transformers import DistilBertPreTrainedModel, BertModel, AdamW, get_linear_schedule_with_warmup
 from transformers import AutoModel
+from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 
 from src.constants import HEURISTIC_TO_INTEGER
 from src.model.focalloss import FocalLoss
-from src.model.nliembedding import NliEmbeddings
 
-PRETRAINED_MODEL_ID = "distilbert-base-uncased"
+PRETRAINED_MODEL_ID = "bert-base-uncased"
 
 
-class DistilBertForNLI(LightningModule):
+class BertForNLI(LightningModule):
 
     def __init__(self, gamma:float):
         super().__init__()
 
-        self.distilbert_config = AutoModel.from_pretrained(PRETRAINED_MODEL_ID)
-        self.distilbert: DistilBertModel = AutoModel.from_pretrained(PRETRAINED_MODEL_ID)
-        assert isinstance(self.distilbert, DistilBertModel)
+        self.bert_config = AutoModel.from_pretrained(PRETRAINED_MODEL_ID)
+        self.bert: BertModel = AutoModel.from_pretrained(PRETRAINED_MODEL_ID)
+        assert isinstance(self.bert, BertModel)
 
-        self.embeddings = NliEmbeddings(src=self.distilbert.embeddings)
-        self.classifier = nn.Linear(self.distilbert_config.dim, 3)
+        self.classifier = nn.Linear(self.bert_config.dim, 3)
 
         # initialized in self.setup()
         self.total_steps = None
         self.loss_criterion = FocalLoss(gamma, reduction='mean')
 
-        self.
-
     def forward(self, input_ids, attention_mask, token_type_ids, label=None, **kwargs):
-        embeds = self.embeddings.forward(input_ids=input_ids, token_type_ids=token_type_ids)
 
-        distilbert_output = self.distilbert.forward(
-            inputs_embeds=embeds,
-            attention_mask=attention_mask
+        bert_output:BaseModelOutputWithPoolingAndCrossAttentions = self.bert.forward(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids
         )
 
-        cls_repr = distilbert_output['last_hidden_state'][:0]  # (bs, emb)
-        logits = self.classifier(cls_repr)
+        cls_repr = bert_output[1]
 
+        logits = self.classifier(cls_repr)
         return logits
 
     def training_step(self, batch, batch_idx):
