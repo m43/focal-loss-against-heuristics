@@ -29,15 +29,17 @@ class FocalLoss(nn.Module):
         Args:
             inputs: A float tensor of arbitrary shape.
                     The predictions for each example.
+                    In logits
             targets: A float tensor with the same shape as inputs. Stores the binary
                     classification label for each element in inputs
                     (0 for the negative class and 1 for the positive class).
         Returns:
             Loss tensor with the reduction option applied.
         """
-        p = torch.sigmoid(inputs)
+        p = torch.softmax(inputs, dim=-1)
+
         ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
-        p_t = p * targets + (1 - p) * (1 - targets)
+        p_t = torch.gather(p, dim=-1, index=targets)
         loss = ce_loss * ((1 - p_t) ** self.gamma)
 
         if self.reduction == "mean":

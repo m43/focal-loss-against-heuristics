@@ -2,9 +2,11 @@ import torch
 from pytorch_lightning import LightningModule
 
 from torch import nn
-from transformers import DistilBertPreTrainedModel, DistilBertModel
+from transformers import DistilBertPreTrainedModel, DistilBertModel, AdamW, get_linear_schedule_with_warmup
 from transformers import AutoModel
 
+from src.constants import HEURISTIC_TO_INTEGER
+from src.model.focalloss import FocalLoss
 from src.model.nliembedding import NliEmbeddings
 
 PRETRAINED_MODEL_ID = "distilbert-base-uncased"
@@ -12,7 +14,7 @@ PRETRAINED_MODEL_ID = "distilbert-base-uncased"
 
 class DistilBertForNLI(LightningModule):
 
-    def __init__(self):
+    def __init__(self, gamma:float):
         super().__init__()
 
         self.distilbert_config = AutoModel.from_pretrained(PRETRAINED_MODEL_ID)
@@ -20,10 +22,15 @@ class DistilBertForNLI(LightningModule):
         assert isinstance(self.distilbert, DistilBertModel)
 
         self.embeddings = NliEmbeddings(src=self.distilbert.embeddings)
+        self.classifier = nn.Linear(self.distilbert_config.dim, 3)
 
-        self.classifier = nn.Linear(self.distilbert_config.dim, 1)
+        # initialized in self.setup()
+        self.total_steps = None
+        self.loss_criterion = FocalLoss(gamma, reduction='mean')
 
-    def forward(self, input_ids, attention_mask, token_type_ids, label=None):
+        self.
+
+    def forward(self, input_ids, attention_mask, token_type_ids, label=None, **kwargs):
         embeds = self.embeddings.forward(input_ids=input_ids, token_type_ids=token_type_ids)
 
         distilbert_output = self.distilbert.forward(
@@ -43,18 +50,22 @@ class DistilBertForNLI(LightningModule):
 
         def hans_step(hans_batch):
 
+            heuristics_masks = {
+                'lexical_overlap': hans_batch['heuristic'] == HEURISTIC_TO_INTEGER['lexical_overlap'],
+                'subsequence': hans_batch['heuristic'] == HEURISTIC_TO_INTEGER['subsequence'],
+                'constituent': hans_batch['heuristic'] == HEURISTIC_TO_INTEGER['constituent']
+            }
 
-        def mnli_step():
-            ...
+            logits = self.forward(**hans_batch)
 
+            logits_per_heuristic = {k+"_logits" : logits[mask] for k, mask in heuristics_masks}
+            labels_per_heuristic = {k+"_labels" : hans_batch['labels'][mask] for k, mask in heuristics_masks}
 
-        outputs = self(**batch)
-        val_loss, logits = outputs[:2]
+            return {**logits_per_heuristic, labels_per_heuristic}
 
-        if self.hparams.num_labels >= 1:
-            preds = torch.argmax(logits, axis=1)
-        elif self.hparams.num_labels == 1:
-            preds = logits.squeeze()
+        def mnli_step(mnli_batch):
+            logits = self.forward(**mnli_batch)
+            return {"mnli_logits" : logits, "mnli_label"}
 
         labels = batch["labels"]
 
@@ -87,22 +98,18 @@ class DistilBertForNLI(LightningModule):
 
     def setup(self, stage=None) -> None:
 
-        # NOT DONE YET
-
         if stage != "fit":
             return
         # Get dataloader by calling it - train_dataloader() is called after setup() by default
         train_loader = self.trainer.datamodule.train_dataloader()
 
-        # Calculate total steps
+        # Calculate total steps ???
         tb_size = self.hparams.train_batch_size * max(1, self.trainer.gpus)
         ab_size = self.trainer.accumulate_grad_batches * float(self.trainer.max_epochs)
         self.total_steps = (len(train_loader.dataset) // tb_size) // ab_size
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""
-
-        # NOT DONE YET
 
         model = self.model
         no_decay = ["bias", "LayerNorm.weight"]
@@ -117,6 +124,7 @@ class DistilBertForNLI(LightningModule):
             },
         ]
         optimizer = AdamW(optimizer_grouped_parameters, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon)
+        # might want to give smaller learning rate to all parameters that were already trained
 
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
