@@ -34,6 +34,11 @@ class ExperimentDataModule(pl.LightningDataModule):
         self.collator = None
 
     def prepare_data(self):
+        load_dataset("hans", split='validation')
+        load_dataset("multi_nli")
+        AutoTokenizer.from_pretrained(self.model_name_or_path, use_fast=True)
+
+    def setup(self, stage: str):
         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(self.tokenizer_str)
 
         # note that this batch size is the processing batch size for tokenization,
@@ -70,9 +75,6 @@ class ExperimentDataModule(pl.LightningDataModule):
         )
 
         self.collator = DataCollatorWithPadding(self.tokenizer, padding='longest')
-
-    def setup(self, stage: str):
-        pass
 
     def train_dataloader(self):
         return DataLoader(self.mnli_dataset['train'],
