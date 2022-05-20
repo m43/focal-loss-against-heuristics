@@ -1,69 +1,53 @@
-from typing import Optional
-
-import datasets
 import torch
-from pytorch_lightning import LightningDataModule, LightningModule, Trainer, seed_everything
-from torch.utils.data import DataLoader
-from transformers import (
-    AdamW,
-    AutoConfig,
-    AutoModel,
-    AutoTokenizer,
-    get_linear_schedule_with_warmup,
-)
-from transformers.models.distilbert.modeling_distilbert import DistilBertModel, create_sinusoidal_embeddings
+from pytorch_lightning import LightningModule
 
-#####################################################################################################################
-# taken from https://pytorch-lightning.readthedocs.io/en/stable/notebooks/lightning_examples/text-transformers.html #
-#####################################################################################################################
+from torch import nn
+from transformers import DistilBertPreTrainedModel, DistilBertModel
+from transformers import AutoModel
+
+from src.model.nliembedding import NliEmbeddings
+
+PRETRAINED_MODEL_ID = "distilbert-base-uncased"
 
 
-class NLITransformer(LightningModule):
-    def __init__(
-        self,
-        model_name_or_path: str,
-        num_labels: int,
-        task_name: str,
-        learning_rate: float = 2e-5,
-        adam_epsilon: float = 1e-8,
-        warmup_steps: int = 0,
-        weight_decay: float = 0.0,
-        train_batch_size: int = 32,
-        eval_batch_size: int = 32,
-        eval_splits: Optional[list] = None,
-        **kwargs,
-    ):
+class DistilBertForNLI(LightningModule):
+
+    def __init__(self):
         super().__init__()
 
-        self.save_hyperparameters()
+        self.distilbert_config = AutoModel.from_pretrained(PRETRAINED_MODEL_ID)
+        self.distilbert: DistilBertModel = AutoModel.from_pretrained(PRETRAINED_MODEL_ID)
+        assert isinstance(self.distilbert, DistilBertModel)
 
-        self.model:DistilBertModel = AutoModel.from_pretrained('distilbert-base-uncased')
+        self.embeddings = NliEmbeddings(src=self.distilbert.embeddings)
 
-        # would be better to get those programatically
-        max_pos_embeddings = 512
-        embedding_dim = 768
+        self.classifier = nn.Linear(self.distilbert_config.dim, 1)
 
-        self.pos_emb = torch.empty((max_pos_embeddings, embedding_dim))
-        create_sinusoidal_embeddings(n_pos=max_pos_embeddings, dim=embedding_dim, out=self.pos_emb)
+    def forward(self, input_ids, attention_mask, token_type_ids, label=None):
+        embeds = self.embeddings.forward(input_ids=input_ids, token_type_ids=token_type_ids)
 
+        distilbert_output = self.distilbert.forward(
+            inputs_embeds=embeds,
+            attention_mask=attention_mask
+        )
 
-    def forward(self, input_ids:torch.Tensor, token_type_ids:torch.Tensor, attention_mask:torch.Tensor):
-        # create transformer input pos encoding + seg encoding + embedding
+        cls_repr = distilbert_output['last_hidden_state'][:0]  # (bs, emb)
+        logits = self.classifier(cls_repr)
 
-        embeddings = word_embeddings + position_embeddings + segment_embeddings # (bs, max_seq_length, dim)
-        embeddings = self.LayerNorm(embeddings)  # (bs, max_seq_length, dim)
-        embeddings = self.dropout(embeddings)  # (bs, max_seq_length, dim)
-
-        self.model.forward(attem)
-
-        return self.model(**inputs)
+        return logits
 
     def training_step(self, batch, batch_idx):
-        outputs = self(**batch)
-        loss = outputs[0]
-        return loss
+        ...
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
+
+        def hans_step(hans_batch):
+
+
+        def mnli_step():
+            ...
+
+
         outputs = self(**batch)
         val_loss, logits = outputs[:2]
 
@@ -132,3 +116,4 @@ class NLITransformer(LightningModule):
         )
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
         return [optimizer], [scheduler]
+
