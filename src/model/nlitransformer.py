@@ -1,11 +1,12 @@
-import torch
-from pytorch_lightning import LightningModule
+import pdb
 
+import torch
+from datasets import load_metric
+from pytorch_lightning import LightningModule
 from torch import nn
-from transformers import DistilBertPreTrainedModel, BertModel, AdamW, get_linear_schedule_with_warmup
-from transformers import AutoModel
-from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
-from dataset import load_metric
+from transformers import AdamW, get_linear_schedule_with_warmup
+from transformers import AutoConfig, AutoModelForSequenceClassification, BertForSequenceClassification
+from transformers.modeling_outputs import SequenceClassifierOutput
 
 from src.constants import HEURISTIC_TO_INTEGER
 from src.model.focalloss import FocalLoss
@@ -14,117 +15,144 @@ PRETRAINED_MODEL_ID = "bert-base-uncased"
 
 
 class BertForNLI(LightningModule):
-
-    def __init__(self, gamma:float):
+    def __init__(
+            self,
+            focal_loss_gamma: float,
+            learning_rate: float,
+            batch_size: int,
+            weight_decay: float,
+            adam_epsilon: float,
+            warmup_steps: int,
+    ):
         super().__init__()
+        self.save_hyperparameters()
 
-        self.bert_config = AutoModel.from_pretrained(PRETRAINED_MODEL_ID)
-        self.bert: BertModel = AutoModel.from_pretrained(PRETRAINED_MODEL_ID)
-        assert isinstance(self.bert, BertModel)
+        self.bert_config = AutoConfig.from_pretrained(PRETRAINED_MODEL_ID)
+        self.bert: BertForSequenceClassification = AutoModelForSequenceClassification.from_pretrained(
+            PRETRAINED_MODEL_ID, num_labels=3)
+        assert isinstance(self.bert, BertForSequenceClassification)
 
-        self.classifier = nn.Linear(self.bert_config.dim, 3)
+        self.classifier = nn.Linear(self.bert_config.hidden_size, 3)
 
         # initialized in self.setup()
-        self.total_steps = None
-        self.loss_criterion = FocalLoss(gamma, reduction='mean')
+        self.loss_criterion = FocalLoss(self.hparams.focal_loss_gamma)
         self.metric = load_metric("accuracy")
 
-    def forward(self, input_ids, attention_mask, token_type_ids, label=None, **kwargs):
-
-        bert_output:BaseModelOutputWithPoolingAndCrossAttentions = self.bert.forward(
+    def forward(self, input_ids, attention_mask, token_type_ids, label=None, **kwargs) -> SequenceClassifierOutput:
+        output: SequenceClassifierOutput = self.bert.forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids
         )
+        return output
 
-        cls_repr = bert_output[1]
+    def mnli_step(self, batch):
+        output = self.forward(**batch)
 
-        logits = self.classifier(cls_repr)
-        return logits
+        onehot_labels = torch.nn.functional.one_hot(batch["labels"], num_classes=3).float()
+        loss = self.loss_criterion(output.logits, onehot_labels).mean()
+        preds = output.logits.argmax(dim=-1)
+        metrics_dict = self.metric.compute(predictions=preds, references=batch["labels"])
+
+        results = {
+            "loss": loss,
+            "mnli_loss": loss,
+            **{f"mnli_{k}": v for k, v in metrics_dict.items()},
+        }
+        return results
+
+    def hans_step(self, batch):
+        output = self.forward(**batch)
+
+        onehot_labels = torch.nn.functional.one_hot(batch["labels"], num_classes=3).float()
+        loss = self.loss_criterion(output.logits, onehot_labels)
+        preds = output.logits.argmax(dim=-1)
+        labels = batch["labels"]
+
+        return {"loss": loss, "preds": preds, "labels": labels}
 
     def training_step(self, batch, batch_idx):
-        ...
+        results = self.mnli_step(batch)
+        results_to_log = {f"train_{k}": v for k, v in results.items()}
+        self.log_dict(results_to_log, on_step=True, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+        return results
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-
-        def hans_step(hans_batch):
-
-            heuristics_masks = {
-                'lexical_overlap': hans_batch['heuristic'] == HEURISTIC_TO_INTEGER['lexical_overlap'],
-                'subsequence': hans_batch['heuristic'] == HEURISTIC_TO_INTEGER['subsequence'],
-                'constituent': hans_batch['heuristic'] == HEURISTIC_TO_INTEGER['constituent']
-            }
-
-            logits = self.forward(**hans_batch)
-
-            logits_per_heuristic = {k+"_logits" : logits[mask] for k, mask in heuristics_masks}
-            labels_per_heuristic = {k+"_labels" : hans_batch['labels'][mask] for k, mask in heuristics_masks}
-            return {**logits_per_heuristic, **labels_per_heuristic}
-
-        def mnli_step(mnli_batch):
-            logits = self.forward(**mnli_batch)
-            return {"mnli_logits" : logits, "mnli_labels": mnli_batch["labels"]}
-
-        summary = mnli_step(batch) if dataloader_idx == 0 else hans_step(batch)
-        return summary
+        if dataloader_idx == 0:
+            results = self.mnli_step(batch)
+            results_to_log = {f"val_{k}": v for k, v in results.items()}
+            self.log_dict(results_to_log, on_step=True, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+            return results
+        else:
+            return self.hans_step(batch)
 
     def validation_epoch_end(self, outputs):
-        metrics_summary = {}
-        for dataloader_idx in len(outputs):
-            output = outputs[dataloader_idx]
-            if(dataloader_idx == 0):
-                logits = torch.cat([x["mnli_logits"] for x in output]).detach().cpu().numpy()
-                labels = torch.cat([x["mnli_labels"] for x in output]).detach().cpu().numpy()
-                preds = torch.argmax(dim=-1)
-                loss = self.loss_criterion(logits, labels)
-                accuracy = self.metric.compute(predicitons=preds, references=labels)["accuracy"]
-                metrics_summary = metrics_summary | {"mnli_loss": loss, "mnli_accuracy": accuracy}
-            elif (dataloader_idx == 1):
-                for k in HEURISTIC_TO_INTEGER.keys():
-                    logits = torch.cat([x[k+"_logits"] for x in output]).detach().cpu().numpy()
-                    labels = torch.cat([x[k+"_labels"] for x in output]).detach().cpu().numpy()
-                    preds = torch.argmax(dim=-1)
-                    loss = self.loss_criterion(logits, labels)
-                    accuracy = self.metric.compute(predicitons=preds, references=labels)["accuracy"]
-                    metrics_summary = metrics_summary | {k+"_loss": loss, k+"_accuracy": accuracy}
+        hans_results = outputs[1]
 
-        self.log_dict(metrics_summary, prog_bar=True)
+        preds = torch.cat([x["preds"] for x in hans_results]).detach().cpu().numpy()
+        labels = torch.cat([x["labels"] for x in hans_results]).detach().cpu().numpy()
+        loss = torch.cat([x["loss"] for x in hans_results]).detach().cpu().numpy()
+        loss_mean = loss.mean()
 
-    def setup(self, stage=None) -> None:
+        metrics = {f"val_{k}": v for k, v in self.metric.compute(predictions=preds, references=labels).items()}
+        self.log("val_loss", loss_mean, on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+        self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
 
-        if stage != "fit":
-            return
-        # Get dataloader by calling it - train_dataloader() is called after setup() by default
-        train_loader = self.trainer.datamodule.train_dataloader()
-
-        # Calculate total steps ???
-        tb_size = self.hparams.train_batch_size * max(1, self.trainer.gpus)
-        ab_size = self.trainer.accumulate_grad_batches * float(self.trainer.max_epochs)
-        self.total_steps = (len(train_loader.dataset) // tb_size) // ab_size
+        for heuristic_name, heuristic_idx in HEURISTIC_TO_INTEGER.items():
+            mask = labels == heuristic_idx
+            loss_heuristic_mean = loss[mask].mean()
+            metrics = {f"val_{k}": v
+                       for k, v in self.metric.compute(predictions=preds[mask], references=labels[mask]).items()}
+            self.log(f"val_loss_{heuristic_name}", loss_heuristic_mean,
+                     on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+            self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""
 
-        model = self.model
+        model = self.bert
         no_decay = ["bias", "LayerNorm.weight"]
+        normal_lr = ["classifier"]
         optimizer_grouped_parameters = [
             {
-                "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+                "params": [
+                    p for n, p in model.named_parameters()
+                    if not any(nd in n for nd in no_decay) and any(nlr in n for nlr in normal_lr)
+                ],
+                "learning_rate": self.hparams.learning_rate,
                 "weight_decay": self.hparams.weight_decay,
             },
             {
-                "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+                "params": [
+                    p for n, p in model.named_parameters()
+                    if any(nd in n for nd in no_decay) and any(nlr in n for nlr in normal_lr)
+                ],
+                "learning_rate": self.hparams.learning_rate,
+                "weight_decay": 0.0,
+            },
+            {
+                "params": [
+                    p for n, p in model.named_parameters()
+                    if not any(nd in n for nd in no_decay) and not any(nlr in n for nlr in normal_lr)
+                ],
+                "learning_rate": self.hparams.learning_rate / 100,
+                "weight_decay": self.hparams.weight_decay,
+            },
+            {
+                "params": [
+                    p for n, p in model.named_parameters()
+                    if any(nd in n for nd in no_decay) and not any(nlr in n for nlr in normal_lr)
+                ],
+                "learning_rate": self.hparams.learning_rate / 100,
                 "weight_decay": 0.0,
             },
         ]
-        optimizer = AdamW(optimizer_grouped_parameters, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon)
-        # might want to give smaller learning rate to all parameters that were already trained
+        optimizer = AdamW(optimizer_grouped_parameters, eps=self.hparams.adam_epsilon)
 
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=self.hparams.warmup_steps,
-            num_training_steps=self.total_steps,
+            num_training_steps=self.trainer.estimated_stepping_batches,
         )
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
         return [optimizer], [scheduler]
-

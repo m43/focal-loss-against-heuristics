@@ -1,16 +1,10 @@
-import os
 from typing import Optional
 
-import torch
-from torch.utils.data import DataLoader
-
 import pytorch_lightning as pl
-from pytorch_lightning.utilities.cli import DATAMODULE_REGISTRY
-
 from datasets import load_dataset
+from pytorch_lightning.utilities.cli import DATAMODULE_REGISTRY
+from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, PreTrainedTokenizerBase, DataCollatorWithPadding
-
-from math import ceil
 
 from src.constants import HEURISTIC_TO_INTEGER
 from src.model.nlitransformer import PRETRAINED_MODEL_ID
@@ -36,7 +30,6 @@ class ExperimentDataModule(pl.LightningDataModule):
     def prepare_data(self):
         load_dataset("hans", split='validation')
         load_dataset("multi_nli")
-        AutoTokenizer.from_pretrained(self.model_name_or_path, use_fast=True)
 
     def setup(self, stage: str):
         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(self.tokenizer_str)
@@ -89,7 +82,6 @@ class ExperimentDataModule(pl.LightningDataModule):
         hans_dataloader = DataLoader(self.hans_dataset,
                                      batch_size=self.batch_size,
                                      collate_fn=self.collator)  # type:ignore
-
         return [mnli_val_dataloader, hans_dataloader]
 
     def teardown(self, stage: Optional[str] = None):
