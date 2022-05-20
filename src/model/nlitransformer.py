@@ -61,6 +61,9 @@ class DistilBertForNLI(LightningModule):
         return {"loss": val_loss, "preds": preds, "labels": labels}
 
     def validation_epoch_end(self, outputs):
+
+        # NOT DONE YET
+
         if self.hparams.task_name == "mnli":
             for i, output in enumerate(outputs):
                 # matched or mismatched
@@ -83,6 +86,9 @@ class DistilBertForNLI(LightningModule):
         return loss
 
     def setup(self, stage=None) -> None:
+
+        # NOT DONE YET
+
         if stage != "fit":
             return
         # Get dataloader by calling it - train_dataloader() is called after setup() by default
@@ -95,6 +101,9 @@ class DistilBertForNLI(LightningModule):
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""
+
+        # NOT DONE YET
+
         model = self.model
         no_decay = ["bias", "LayerNorm.weight"]
         optimizer_grouped_parameters = [
