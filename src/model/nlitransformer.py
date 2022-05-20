@@ -5,6 +5,7 @@ from torch import nn
 from transformers import DistilBertPreTrainedModel, BertModel, AdamW, get_linear_schedule_with_warmup
 from transformers import AutoModel
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
+from dataset import load_metric
 
 from src.constants import HEURISTIC_TO_INTEGER
 from src.model.focalloss import FocalLoss
@@ -26,6 +27,7 @@ class BertForNLI(LightningModule):
         # initialized in self.setup()
         self.total_steps = None
         self.loss_criterion = FocalLoss(gamma, reduction='mean')
+        self.metric = load_metric("accuracy")
 
     def forward(self, input_ids, attention_mask, token_type_ids, label=None, **kwargs):
 
@@ -57,41 +59,36 @@ class BertForNLI(LightningModule):
 
             logits_per_heuristic = {k+"_logits" : logits[mask] for k, mask in heuristics_masks}
             labels_per_heuristic = {k+"_labels" : hans_batch['labels'][mask] for k, mask in heuristics_masks}
-
-            return {**logits_per_heuristic, labels_per_heuristic}
+            return {**logits_per_heuristic, **labels_per_heuristic}
 
         def mnli_step(mnli_batch):
             logits = self.forward(**mnli_batch)
-            return {"mnli_logits" : logits, "mnli_label"}
+            return {"mnli_logits" : logits, "mnli_labels": mnli_batch["labels"]}
 
-        labels = batch["labels"]
-
-        return {"loss": val_loss, "preds": preds, "labels": labels}
+        summary = mnli_step(batch) if dataloader_idx == 0 else hans_step(batch)
+        return summary
 
     def validation_epoch_end(self, outputs):
+        metrics_summary = {}
+        for dataloader_idx in len(outputs):
+            output = outputs[dataloader_idx]
+            if(dataloader_idx == 0):
+                logits = torch.cat([x["mnli_logits"] for x in output]).detach().cpu().numpy()
+                labels = torch.cat([x["mnli_labels"] for x in output]).detach().cpu().numpy()
+                preds = torch.argmax(dim=-1)
+                loss = self.loss_criterion(logits, labels)
+                accuracy = self.metric.compute(predicitons=preds, references=labels)["accuracy"]
+                metrics_summary = metrics_summary | {"mnli_loss": loss, "mnli_accuracy": accuracy}
+            elif (dataloader_idx == 1):
+                for k in HEURISTIC_TO_INTEGER.keys():
+                    logits = torch.cat([x[k+"_logits"] for x in output]).detach().cpu().numpy()
+                    labels = torch.cat([x[k+"_labels"] for x in output]).detach().cpu().numpy()
+                    preds = torch.argmax(dim=-1)
+                    loss = self.loss_criterion(logits, labels)
+                    accuracy = self.metric.compute(predicitons=preds, references=labels)["accuracy"]
+                    metrics_summary = metrics_summary | {k+"_loss": loss, k+"_accuracy": accuracy}
 
-        # NOT DONE YET
-
-        if self.hparams.task_name == "mnli":
-            for i, output in enumerate(outputs):
-                # matched or mismatched
-                split = self.hparams.eval_splits[i].split("_")[-1]
-                preds = torch.cat([x["preds"] for x in output]).detach().cpu().numpy()
-                labels = torch.cat([x["labels"] for x in output]).detach().cpu().numpy()
-                loss = torch.stack([x["loss"] for x in output]).mean()
-                self.log(f"val_loss_{split}", loss, prog_bar=True)
-                split_metrics = {
-                    f"{k}_{split}": v for k, v in self.metric.compute(predictions=preds, references=labels).items()
-                }
-                self.log_dict(split_metrics, prog_bar=True)
-            return loss
-
-        preds = torch.cat([x["preds"] for x in outputs]).detach().cpu().numpy()
-        labels = torch.cat([x["labels"] for x in outputs]).detach().cpu().numpy()
-        loss = torch.stack([x["loss"] for x in outputs]).mean()
-        self.log("val_loss", loss, prog_bar=True)
-        self.log_dict(self.metric.compute(predictions=preds, references=labels), prog_bar=True)
-        return loss
+        self.log_dict(metrics_summary, prog_bar=True)
 
     def setup(self, stage=None) -> None:
 
