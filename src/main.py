@@ -22,9 +22,9 @@ def get_parser_main_model():
     parser.add_argument('--experiment_name', type=str, default='bertfornli-exp1')
     parser.add_argument('--checkpoint_path', type=str, default=None, help="Checkpoint used to restore training state")
     parser.add_argument('--experiment_version', type=str, default=None)
-    parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs')
+    parser.add_argument('--n_epochs', type=int, default=20, help='number of epochs')
     parser.add_argument('--num_workers', type=int, default=20, help='number of dataloader workers')
-    parser.add_argument('--batch_size', type=int, default=256, help='batch size')
+    parser.add_argument('--batch_size', type=int, default=32, help='batch size')
     parser.add_argument('--gpus', type=int, default=-1)
     parser.add_argument('--early_stopping_patience', type=int, default=50)
 
@@ -95,7 +95,8 @@ def main(config):
             gradient_clip_val=config.gradient_clip_val,
             gpus=config.gpus,
             accelerator="gpu",
-            strategy=DDPStrategy(),  # process_group_backend="gloo"
+            # strategy="dp",
+            strategy=DDPStrategy(process_group_backend="gloo"),
         )
     else:
         trainer = Trainer(

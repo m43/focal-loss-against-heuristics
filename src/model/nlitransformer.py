@@ -1,7 +1,4 @@
-import pdb
-
 import torch
-from datasets import load_metric
 from pytorch_lightning import LightningModule
 from torch import nn
 from transformers import AdamW, get_linear_schedule_with_warmup
@@ -36,7 +33,6 @@ class BertForNLI(LightningModule):
 
         # initialized in self.setup()
         self.loss_criterion = FocalLoss(self.hparams.focal_loss_gamma)
-        self.metric = load_metric("accuracy")
 
     def forward(self, input_ids, attention_mask, token_type_ids, label=None, **kwargs) -> SequenceClassifierOutput:
         output: SequenceClassifierOutput = self.bert.forward(
@@ -52,12 +48,12 @@ class BertForNLI(LightningModule):
         onehot_labels = torch.nn.functional.one_hot(batch["labels"], num_classes=3).float()
         loss = self.loss_criterion(output.logits, onehot_labels).mean()
         preds = output.logits.argmax(dim=-1)
-        metrics_dict = self.metric.compute(predictions=preds, references=batch["labels"])
+        acc = (preds == batch["labels"]).sum() / len(preds)
 
         results = {
             "loss": loss,
             "mnli_loss": loss,
-            **{f"mnli_{k}": v for k, v in metrics_dict.items()},
+            "mnli_acc": acc,
         }
         return results
 
@@ -91,21 +87,21 @@ class BertForNLI(LightningModule):
 
         preds = torch.cat([x["preds"] for x in hans_results]).detach().cpu().numpy()
         labels = torch.cat([x["labels"] for x in hans_results]).detach().cpu().numpy()
-        loss = torch.cat([x["loss"] for x in hans_results]).detach().cpu().numpy()
-        loss_mean = loss.mean()
+        losses = torch.cat([x["loss"] for x in hans_results]).detach().cpu().numpy()
+        loss = losses.mean()
 
-        metrics = {f"val_{k}": v for k, v in self.metric.compute(predictions=preds, references=labels).items()}
-        self.log("val_loss", loss_mean, on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
-        self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+        acc = (preds == labels).sum() / len(preds)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+        self.log("val_acc", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
 
         for heuristic_name, heuristic_idx in HEURISTIC_TO_INTEGER.items():
             mask = labels == heuristic_idx
-            loss_heuristic_mean = loss[mask].mean()
-            metrics = {f"val_{k}": v
-                       for k, v in self.metric.compute(predictions=preds[mask], references=labels[mask]).items()}
-            self.log(f"val_loss_{heuristic_name}", loss_heuristic_mean,
+            loss = losses[mask].mean()
+            acc = (preds[mask] == labels[mask]).sum() / mask.sum()
+            self.log(f"val_loss_{heuristic_name}", loss,
                      on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
-            self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+            self.log(f"val_acc_{heuristic_name}", acc,
+                     on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""

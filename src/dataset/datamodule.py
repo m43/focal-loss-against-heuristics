@@ -67,21 +67,22 @@ class ExperimentDataModule(pl.LightningDataModule):
             columns=['input_ids', 'token_type_ids', 'attention_mask', 'label']
         )
 
-        self.collator = DataCollatorWithPadding(self.tokenizer, padding='longest')
+        self.collator = DataCollatorWithPadding(self.tokenizer, padding='longest', return_tensors="pt")
+        self.collator_fn = lambda x: self.collator(x).data
 
     def train_dataloader(self):
         return DataLoader(self.mnli_dataset['train'],
                           batch_size=self.batch_size,
-                          collate_fn=self.collator)  # type:ignore
+                          collate_fn=self.collator_fn)  # type:ignore
 
     def val_dataloader(self):
         mnli_val_dataloader = DataLoader(self.mnli_dataset['validation_matched'],
                                          batch_size=self.batch_size,
-                                         collate_fn=self.collator)  # type:ignore
+                                         collate_fn=self.collator_fn)  # type:ignore
 
         hans_dataloader = DataLoader(self.hans_dataset,
                                      batch_size=self.batch_size,
-                                     collate_fn=self.collator)  # type:ignore
+                                     collate_fn=self.collator_fn)  # type:ignore
         return [mnli_val_dataloader, hans_dataloader]
 
     def teardown(self, stage: Optional[str] = None):
