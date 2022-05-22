@@ -69,20 +69,21 @@ class BertForNLI(LightningModule):
 
     def training_step(self, batch, batch_idx):
         results = self.mnli_step(batch)
-        results_to_log = {f"train_{k}": v for k, v in results.items()}
-        self.log_dict(results_to_log, on_step=True, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+        results_to_log = {f"Train/{k}": v for k, v in results.items()}
+        self.log_dict(results_to_log, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return results
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         if dataloader_idx == 0:
             results = self.mnli_step(batch)
-            results_to_log = {f"val_{k}": v for k, v in results.items()}
-            self.log_dict(results_to_log, on_step=True, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+            results_to_log = {f"Valid/{k}": v for k, v in results.items()}
+            self.log_dict(results_to_log, on_step=True, on_epoch=True, prog_bar=True, logger=True)
             return results
         else:
             return self.hans_step(batch)
 
     def validation_epoch_end(self, outputs):
+        print(self.global_rank)
         hans_results = outputs[1]
 
         preds = torch.cat([x["preds"] for x in hans_results]).detach().cpu().numpy()
@@ -91,17 +92,15 @@ class BertForNLI(LightningModule):
         loss = losses.mean()
 
         acc = (preds == labels).sum() / len(preds)
-        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
-        self.log("val_acc", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+        self.log("Valid/loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("Valid/acc", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
         for heuristic_name, heuristic_idx in HEURISTIC_TO_INTEGER.items():
             mask = labels == heuristic_idx
             loss = losses[mask].mean()
             acc = (preds[mask] == labels[mask]).sum() / mask.sum()
-            self.log(f"val_loss_{heuristic_name}", loss,
-                     on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
-            self.log(f"val_acc_{heuristic_name}", acc,
-                     on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+            self.log(f"Valid/Loss/{heuristic_name}", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+            self.log(f"Valid/Acc/{heuristic_name}", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""

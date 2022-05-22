@@ -8,7 +8,6 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger, CSVLogger
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DDPStrategy
 
 from src.dataset.datamodule import ExperimentDataModule
 from src.model.nlitransformer import BertForNLI
@@ -75,11 +74,11 @@ def main(config):
     print(config)
 
     early_stopping_callback = EarlyStopping(
-        monitor="Loss/val/loss", mode="min",
+        monitor="Valid/loss", mode="min",
         patience=config.early_stopping_patience,
         check_on_train_epoch_end=False
     )
-    model_checkpoint_callback = ModelCheckpoint(monitor="Loss/val/loss", save_last=True, verbose=True, )
+    model_checkpoint_callback = ModelCheckpoint(monitor="Valid/loss", save_last=True, verbose=True, )
     learning_rate_monitor_callback = LearningRateMonitor(logging_interval='step')
     callbacks = [
         early_stopping_callback,
@@ -95,8 +94,8 @@ def main(config):
             gradient_clip_val=config.gradient_clip_val,
             gpus=config.gpus,
             accelerator="gpu",
-            # strategy="dp",
-            strategy=DDPStrategy(process_group_backend="gloo"),
+            strategy="dp",
+            # strategy=DDPStrategy(process_group_backend="gloo"),
         )
     else:
         trainer = Trainer(
