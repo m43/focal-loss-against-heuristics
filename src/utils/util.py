@@ -50,11 +50,3 @@ def ensure_dir(dirname):
     if not dirname.is_dir():
         dirname.mkdir(parents=True, exist_ok=False)
 
-
-def pad_collate_fn(batch, pad_value):
-    sequences, images, lengths = zip(*batch)
-    images = torch.cat(images).unsqueeze(1)
-    lengths = torch.tensor(lengths)
-    padded_sequences = torch.nn.utils.rnn.pad_sequence(sequences, padding_value=pad_value, batch_first=True)
-    # padded_sequences = torch.nn.utils.rnn.pad_sequence(sequences, padding_value=pad_value)
-    return padded_sequences, images, lengths
