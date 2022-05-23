@@ -29,8 +29,6 @@ class BertForNLI(LightningModule):
             PRETRAINED_MODEL_ID, num_labels=3)
         assert isinstance(self.bert, BertForSequenceClassification)
 
-        self.classifier = nn.Linear(self.bert_config.hidden_size, 3)
-
         # initialized in self.setup()
         self.loss_criterion = FocalLoss(self.hparams.focal_loss_gamma)
 
