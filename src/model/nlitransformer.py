@@ -1,6 +1,8 @@
 import torch
 from pytorch_lightning import LightningModule
 from torch import nn
+import torch.nn.functional as F
+
 from transformers import AdamW, get_linear_schedule_with_warmup
 from transformers import AutoConfig, AutoModelForSequenceClassification, BertForSequenceClassification
 from transformers.modeling_outputs import SequenceClassifierOutput
@@ -43,7 +45,7 @@ class BertForNLI(LightningModule):
     def mnli_step(self, batch):
         output = self.forward(**batch)
 
-        onehot_labels = torch.nn.functional.one_hot(batch["labels"], num_classes=3).float()
+        onehot_labels = F.one_hot(batch["labels"], num_classes=3).float()
         loss = self.loss_criterion(output.logits, onehot_labels).mean()
         preds = output.logits.argmax(dim=-1)
         acc = (preds == batch["labels"]).sum() / len(preds)
@@ -58,7 +60,7 @@ class BertForNLI(LightningModule):
     def hans_step(self, batch):
         output = self.forward(**batch)
 
-        onehot_labels = torch.nn.functional.one_hot(batch["labels"], num_classes=3).float()
+        onehot_labels = F.one_hot(batch["labels"], num_classes=3).float()
         loss = self.loss_criterion(output.logits, onehot_labels)
         preds = output.logits.argmax(dim=-1)
         labels = batch["labels"]
@@ -94,7 +96,10 @@ class BertForNLI(LightningModule):
         self.log("Valid/acc", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
         for heuristic_name, heuristic_idx in HEURISTIC_TO_INTEGER.items():
-            mask = labels == heuristic_idx
+            mask:torch.Tensor = labels == heuristic_idx #type: ignore
+            if mask.sum() == 0:
+                # that way we avoid NaN and polluting our metrics
+                continue
             loss = losses[mask].mean()
             acc = (preds[mask] == labels[mask]).sum() / mask.sum()
             self.log(f"Valid/Loss/{heuristic_name}", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
