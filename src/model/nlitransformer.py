@@ -65,8 +65,9 @@ class BertForNLI(LightningModule):
         loss = self.loss_criterion(output.logits, onehot_labels)
         preds = output.logits.argmax(dim=-1)
         labels = batch["labels"]
+        heuristic = batch["heuristic"]
 
-        return {"loss": loss, "preds": preds, "labels": labels}
+        return {"loss": loss, "preds": preds, "labels": labels, "heuristic": heuristic}
 
     def training_step(self, batch, batch_idx):
         results = self.mnli_step(batch)
@@ -74,7 +75,7 @@ class BertForNLI(LightningModule):
         self.log_dict(results_to_log, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return results
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+    def validation_step(self, batch, batch_idx, dataloader_idx=0): 
         if dataloader_idx == 0:
             results = self.mnli_step(batch)
             results_to_log = {f"Valid/{k}": v for k, v in results.items()}
@@ -89,6 +90,7 @@ class BertForNLI(LightningModule):
 
         preds = torch.cat([x["preds"] for x in hans_results]).detach().cpu().numpy()
         labels = torch.cat([x["labels"] for x in hans_results]).detach().cpu().numpy()
+        heuristics = torch.cat([x["heuristic"] for x in hans_results]).detach().cpu().numpy()
         losses = torch.cat([x["loss"] for x in hans_results]).detach().cpu().numpy()
         loss = losses.mean()
 
@@ -97,7 +99,8 @@ class BertForNLI(LightningModule):
         self.log("Valid/acc", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
 
         for heuristic_name, heuristic_idx in HEURISTIC_TO_INTEGER.items():
-            mask:torch.Tensor = labels == heuristic_idx #type: ignore
+            mask:torch.Tensor = (heuristics == heuristic_idx) #type: ignore
+
             if mask.sum() == 0:
                 # that way we avoid NaN and polluting our metrics
                 continue
