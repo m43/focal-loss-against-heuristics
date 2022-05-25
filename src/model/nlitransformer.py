@@ -93,8 +93,8 @@ class BertForNLI(LightningModule):
         loss = losses.mean()
 
         acc = (preds == labels).sum() / len(preds)
-        self.log("Valid/loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log("Valid/acc", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("Valid/loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log("Valid/acc", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
 
         for heuristic_name, heuristic_idx in HEURISTIC_TO_INTEGER.items():
             mask:torch.Tensor = labels == heuristic_idx #type: ignore
@@ -103,8 +103,8 @@ class BertForNLI(LightningModule):
                 continue
             loss = losses[mask].mean()
             acc = (preds[mask] == labels[mask]).sum() / mask.sum()
-            self.log(f"Valid/Loss/{heuristic_name}", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-            self.log(f"Valid/Acc/{heuristic_name}", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+            self.log(f"Valid/Loss/{heuristic_name}", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+            self.log(f"Valid/Acc/{heuristic_name}", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""
