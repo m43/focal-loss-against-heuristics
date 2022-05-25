@@ -8,6 +8,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger, CSVLogger
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.strategies import DDPStrategy
 
 from src.dataset.datamodule import ExperimentDataModule
 from src.model.nlitransformer import BertForNLI
@@ -95,8 +96,8 @@ def main(config):
             gpus=config.gpus,
             precision=16,
             accelerator="gpu",
-            strategy="dp",
-            # strategy=DDPStrategy(process_group_backend="gloo"),
+            #strategy="dp",
+            strategy=DDPStrategy(process_group_backend="gloo")
         )
     else:
         trainer = Trainer(
@@ -107,7 +108,8 @@ def main(config):
         )
     trainer.fit(nlitransformer, dm, ckpt_path=config.checkpoint_path)
     print(f"best_model_path={model_checkpoint_callback.best_model_path}")
-    trainer.test(nlitransformer, dm, ckpt_path='best')
+    # We don't have test dataloader at the moment
+    # trainer.test(nlitransformer, dm, ckpt_path='best')
 
 
 if __name__ == "__main__":
