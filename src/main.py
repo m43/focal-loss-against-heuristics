@@ -96,8 +96,9 @@ def main(config):
             gpus=config.gpus,
             precision=16,
             accelerator="gpu",
-            #strategy="dp",
-            strategy=DDPStrategy(process_group_backend="gloo")
+            # strategy="dp",
+            strategy=DDPStrategy(process_group_backend="gloo"),
+            accumulate_grad_batches=16,
         )
     else:
         trainer = Trainer(
