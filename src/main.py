@@ -93,6 +93,7 @@ def main(config):
             callbacks=callbacks,
             gradient_clip_val=config.gradient_clip_val,
             gpus=config.gpus,
+            precision=16,
             accelerator="gpu",
             strategy="dp",
             # strategy=DDPStrategy(process_group_backend="gloo"),
