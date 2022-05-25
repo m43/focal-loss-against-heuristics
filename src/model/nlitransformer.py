@@ -2,8 +2,9 @@ import torch
 from pytorch_lightning import LightningModule
 from torch import nn
 import torch.nn.functional as F
+from torch.optim import AdamW
 
-from transformers import AdamW, get_linear_schedule_with_warmup
+from transformers import get_linear_schedule_with_warmup
 from transformers import AutoConfig, AutoModelForSequenceClassification, BertForSequenceClassification
 from transformers.modeling_outputs import SequenceClassifierOutput
 
