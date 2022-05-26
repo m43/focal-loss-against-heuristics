@@ -3,6 +3,3 @@ HEURISTIC_TO_INTEGER = {
     'subsequence': 1,
     'constituent': 2
 }
-
-
-

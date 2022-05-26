@@ -1,8 +1,9 @@
 import unittest
 
-from src.model.focalloss import FocalLoss
 import torch
 import torch.nn.functional as F
+
+from src.model.focalloss import FocalLoss
 
 
 class TestFocalLoss(unittest.TestCase):
@@ -28,10 +29,9 @@ class TestFocalLoss(unittest.TestCase):
         )
 
     def test_formula_applied_correctly(self):
-
         logits = torch.tensor([
-            [10,  9,  -5],
-            [ 0,  2, -10]
+            [10, 9, -5],
+            [0, 2, -10]
         ]).float()
         probs = F.softmax(logits, dim=-1).max(dim=-1)[0]
 
@@ -41,12 +41,13 @@ class TestFocalLoss(unittest.TestCase):
         ]).float()
 
         for gamma in [1., 2., 5., 10.]:
-            expected = - (((1 - probs)**gamma) * torch.log(probs))
+            expected = - (((1 - probs) ** gamma) * torch.log(probs))
             actual = FocalLoss(gamma=gamma, reduction='none').forward(logits, targets)
 
             self.assertTrue(
                 torch.all(torch.isclose(expected, actual)),
             )
+
 
 if __name__ == '__main__':
     unittest.main()

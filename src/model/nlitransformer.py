@@ -166,7 +166,7 @@ class BertForNLI(LightningModule):
                 "weight_decay": self.hparams.weight_decay,
             },
             {
-                "name": "2_w/o-decay_normal-lr",
+                "name": "2_no-decay_normal-lr",
                 "params": [
                     p for n, p in model.named_parameters()
                     if any(nd in n for nd in no_decay) and any(nlr in n for nlr in normal_lr)
@@ -184,7 +184,7 @@ class BertForNLI(LightningModule):
                 "weight_decay": self.hparams.weight_decay,
             },
             {
-                "name": "4_w/o-decay_lower-lr",
+                "name": "4_no-decay_lower-lr",
                 "params": [
                     p for n, p in model.named_parameters()
                     if any(nd in n for nd in no_decay) and not any(nlr in n for nlr in normal_lr)
