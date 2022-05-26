@@ -117,35 +117,39 @@ class BertForNLI(LightningModule):
         normal_lr = ["classifier"]
         optimizer_grouped_parameters = [
             {
+                "name": "1_w-decay_normal-lr",
                 "params": [
                     p for n, p in model.named_parameters()
                     if not any(nd in n for nd in no_decay) and any(nlr in n for nlr in normal_lr)
                 ],
-                "learning_rate": self.hparams.learning_rate,
+                "lr": self.hparams.learning_rate,
                 "weight_decay": self.hparams.weight_decay,
             },
             {
+                "name": "2_w/o-decay_normal-lr",
                 "params": [
                     p for n, p in model.named_parameters()
                     if any(nd in n for nd in no_decay) and any(nlr in n for nlr in normal_lr)
                 ],
-                "learning_rate": self.hparams.learning_rate,
+                "lr": self.hparams.learning_rate,
                 "weight_decay": 0.0,
             },
             {
+                "name": "3_w-decay_lower-lr",
                 "params": [
                     p for n, p in model.named_parameters()
                     if not any(nd in n for nd in no_decay) and not any(nlr in n for nlr in normal_lr)
                 ],
-                "learning_rate": self.hparams.learning_rate / 100,
+                "lr": self.hparams.learning_rate / 100,
                 "weight_decay": self.hparams.weight_decay,
             },
             {
+                "name": "4_w/o-decay_lower-lr",
                 "params": [
                     p for n, p in model.named_parameters()
                     if any(nd in n for nd in no_decay) and not any(nlr in n for nlr in normal_lr)
                 ],
-                "learning_rate": self.hparams.learning_rate / 100,
+                "lr": self.hparams.learning_rate / 100,
                 "weight_decay": 0.0,
             },
         ]
