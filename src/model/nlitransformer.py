@@ -1,17 +1,22 @@
-import torch
-from pytorch_lightning import LightningModule
-from torch import nn
-import torch.nn.functional as F
-from torch.optim import AdamW
+import json
 
-from transformers import get_linear_schedule_with_warmup
-from transformers import AutoConfig, AutoModelForSequenceClassification, BertForSequenceClassification
+import pandas as pd
+import torch
+import torch.nn.functional as F
+from pytorch_lightning import LightningModule
+from pytorch_lightning.loggers import WandbLogger
+from torch.optim import AdamW
+from transformers import AutoConfig, AutoModelForSequenceClassification, BertForSequenceClassification, \
+    PreTrainedTokenizerBase, AutoTokenizer, get_linear_schedule_with_warmup
 from transformers.modeling_outputs import SequenceClassifierOutput
 
 from src.constants import HEURISTIC_TO_INTEGER
 from src.model.focalloss import FocalLoss
+from src.utils.util import get_logger
 
 PRETRAINED_MODEL_ID = "bert-base-uncased"
+
+log = get_logger(__name__)
 
 
 class BertForNLI(LightningModule):
@@ -52,9 +57,9 @@ class BertForNLI(LightningModule):
         acc = (preds == batch["labels"]).sum() / len(preds)
 
         results = {
-            "loss": loss,
             "mnli_loss": loss,
             "mnli_acc": acc,
+            "mnli_datapoint_count": len(preds),
         }
         return results
 
@@ -67,47 +72,82 @@ class BertForNLI(LightningModule):
         labels = batch["labels"]
         heuristic = batch["heuristic"]
 
-        return {"loss": loss, "preds": preds, "labels": labels, "heuristic": heuristic}
+        return {"hans_loss": loss, "preds": preds, "labels": labels, "heuristic": heuristic}
 
     def training_step(self, batch, batch_idx):
         results = self.mnli_step(batch)
-        results_to_log = {f"Train/{k}": v for k, v in results.items()}
+
+        results_to_log = {f"Train/{k}": v for k, v in results.items() if k not in ["mnli_datapoint_count"]}
         self.log_dict(results_to_log, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log(f"Train/mnli_datapoint_count", results["mnli_datapoint_count"], on_step=True, on_epoch=True,
+                 prog_bar=True, logger=True, add_dataloader_idx=False, reduce_fx="sum")
+
+        if batch_idx == 0 or batch_idx == -1 and self.global_rank == 0 and self.current_epoch in [0, 1]:
+            self._log_batch_for_debugging(f"Train/Batch/batch_{batch_idx}", batch)
+
+        # Loss to be used by the optimizer
+        results["loss"] = results["mnli_loss"]
         return results
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0): 
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
         if dataloader_idx == 0:
             results = self.mnli_step(batch)
-            results_to_log = {f"Valid/{k}": v for k, v in results.items()}
-            self.log_dict(results_to_log, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-            return results
+            results_to_log = {f"Valid/{k}": v for k, v in results.items() if k not in ["mnli_datapoint_count"]}
+            self.log_dict(results_to_log, on_step=True, on_epoch=True, prog_bar=True, logger=True,
+                          add_dataloader_idx=False)
+            self.log(f"Valid/mnli_datapoint_count", results["mnli_datapoint_count"], on_step=True, on_epoch=True,
+                     prog_bar=True, logger=True, add_dataloader_idx=False, reduce_fx="sum")
         else:
-            return self.hans_step(batch)
+            results = self.hans_step(batch)
+
+        if batch_idx == 0 or batch_idx == -1 and self.global_rank == 0 and self.current_epoch in [0, 1]:
+            self._log_batch_for_debugging(f"Valid/Batch/batch-{batch_idx}_dataloader-{dataloader_idx}", batch)
+
+        return results
+
+    def _log_batch_for_debugging(self, log_key, batch):
+        def jsonify(value):
+            if isinstance(value, torch.Tensor):
+                return value.tolist()
+            return value
+
+        debug_tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(PRETRAINED_MODEL_ID)
+        batch = dict(batch)  # do not modify the original batch dict
+        batch["txt"] = debug_tokenizer.batch_decode(batch["input_ids"])
+
+        batch_json = json.dumps({k: jsonify(v) for k, v in batch.items()})
+        log.info(f"{log_key}:\n{batch_json}")
+
+        batch_df = pd.DataFrame({k: [str(jsonify(e)) for e in v] for k, v in batch.items()})
+        for logger in self.loggers:
+            if isinstance(logger, WandbLogger):
+                logger: WandbLogger = logger
+                logger.log_text(f"{log_key}", dataframe=batch_df)
 
     def validation_epoch_end(self, outputs):
-        print(self.global_rank)
         hans_results = outputs[1]
 
         preds = torch.cat([x["preds"] for x in hans_results]).detach().cpu().numpy()
         labels = torch.cat([x["labels"] for x in hans_results]).detach().cpu().numpy()
         heuristics = torch.cat([x["heuristic"] for x in hans_results]).detach().cpu().numpy()
-        losses = torch.cat([x["loss"] for x in hans_results]).detach().cpu().numpy()
+        losses = torch.cat([x["hans_loss"] for x in hans_results]).detach().cpu().numpy()
         loss = losses.mean()
 
         acc = (preds == labels).sum() / len(preds)
-        self.log("Valid/loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        self.log("Valid/acc", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log("Valid/hans_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("Valid/hans_acc", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("Valid/hans_count", float(len(preds)), on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
         for heuristic_name, heuristic_idx in HEURISTIC_TO_INTEGER.items():
-            mask:torch.Tensor = (heuristics == heuristic_idx) #type: ignore
-
+            mask: torch.Tensor = (heuristics == heuristic_idx)  # type: ignore
             if mask.sum() == 0:
                 # that way we avoid NaN and polluting our metrics
                 continue
             loss = losses[mask].mean()
             acc = (preds[mask] == labels[mask]).sum() / mask.sum()
-            self.log(f"Valid/Loss/{heuristic_name}", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-            self.log(f"Valid/Acc/{heuristic_name}", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+            self.log(f"Valid/Hans_loss/{heuristic_name}", loss, on_step=False, on_epoch=True, prog_bar=True,
+                     logger=True)
+            self.log(f"Valid/Hans_acc/{heuristic_name}", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""

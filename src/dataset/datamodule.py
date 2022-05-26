@@ -8,6 +8,9 @@ from transformers import AutoTokenizer, PreTrainedTokenizerBase, DataCollatorWit
 
 from src.constants import HEURISTIC_TO_INTEGER
 from src.model.nlitransformer import PRETRAINED_MODEL_ID
+from src.utils.util import get_logger
+
+log = get_logger(__name__)
 
 
 @DATAMODULE_REGISTRY
@@ -54,6 +57,7 @@ class ExperimentDataModule(pl.LightningDataModule):
             type='torch',
             columns=['input_ids', 'token_type_ids', 'attention_mask', 'label', 'heuristic']
         )
+        log.info(f"Hans validation dataset loaded, datapoints: {len(self.hans_dataset)}")
 
         self.mnli_dataset = load_dataset("multi_nli").map(
             lambda batch: self.tokenizer(
@@ -66,6 +70,9 @@ class ExperimentDataModule(pl.LightningDataModule):
             type='torch',
             columns=['input_ids', 'token_type_ids', 'attention_mask', 'label']
         )
+        log.info(f"MNLI dataset splits loaded:")
+        log.info(f"   len(self.mnli_dataset['train'])={len(self.mnli_dataset['train'])}")
+        log.info(f"   len(self.mnli_dataset['validation_matched'])={len(self.mnli_dataset['validation_matched'])}")
 
         self.collator = DataCollatorWithPadding(self.tokenizer, padding='longest', return_tensors="pt")
         self.collator_fn = lambda x: self.collator(x).data
