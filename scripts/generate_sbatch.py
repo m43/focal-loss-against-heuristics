@@ -119,13 +119,40 @@ sbatch_configurations = {
             " --gradient_clip 0.0"
             " --adam_epsilon 1e-8"
             " --precision 16",
-
         ]
-
+    },
+    "sbatch_02": {
+        "debug": False,
+        "commands": [
+            f"python -m src.main"
+            f" --experiment_name bertfornli-exp1"
+            f" --experiment_version"
+            f" 'S2.{i:02}_gamma={gamma:.1f}_wdecay={weight_decay}_gradclip={grad_clip}_lr=0.001_bs=32_accum=4'"
+            f" --gpus -1"
+            f" --focal_loss_gamma {gamma}"
+            f" --accumulate_grad_batches 4"
+            f" --lr 1e-3"
+            f" --batch_size 32"
+            f" --warmup 15000"
+            f" --n_epochs 15"
+            f" --early_stopping_patience 10"
+            f" --weight_decay {weight_decay}"
+            f" --gradient_clip {grad_clip}"
+            f" --adam_epsilon 1e-8"
+            f" --precision 16"
+            for i, (gamma, weight_decay, grad_clip) in enumerate([
+                (2, 0, 0),
+                (2, 0, 1),
+                (2, 0.000001, 0),
+                (2, 0.000001, 1),
+                (5, 0, 0),
+                (10, 0, 0),
+            ])
+        ]
     },
 }
 
-SBATCH_ID = 'sbatch_01'
+SBATCH_ID = 'sbatch_02'
 OUTPUT_FOLDER = f"./sbatch/{SBATCH_ID}"
 
 sbatch_config = sbatch_configurations[SBATCH_ID]
