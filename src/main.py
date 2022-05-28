@@ -106,6 +106,7 @@ def main(config):
             strategy="dp",
             # strategy=DDPStrategy(process_group_backend="gloo"),
             accumulate_grad_batches=config.accumulate_grad_batches,
+            val_check_interval=1 / 3,
         )
     else:
         trainer = Trainer(
