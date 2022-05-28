@@ -138,16 +138,20 @@ class BertForNLI(LightningModule):
         self.log("Valid/hans_acc", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         self.log("Valid/hans_count", float(len(preds)), on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
-        for heuristic_name, heuristic_idx in HEURISTIC_TO_INTEGER.items():
-            mask: torch.Tensor = (heuristics == heuristic_idx)  # type: ignore
-            if mask.sum() == 0:
-                # that way we avoid NaN and polluting our metrics
-                continue
-            loss = losses[mask].mean()
-            acc = (preds[mask] == labels[mask]).sum() / mask.sum()
-            self.log(f"Valid/Hans_loss/{heuristic_name}", loss, on_step=False, on_epoch=True, prog_bar=True,
-                     logger=True)
-            self.log(f"Valid/Hans_acc/{heuristic_name}", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        for target_label, label_description in enumerate(["entailment", "non_entailment"]):
+            for heuristic_name, heuristic_idx in HEURISTIC_TO_INTEGER.items():
+                mask = (heuristics == heuristic_idx) & (labels == target_label)
+                if mask.sum() == 0:
+                    # that way we avoid NaN and polluting our metrics
+                    continue
+
+                loss = losses[mask].mean()
+                acc = (preds[mask] == labels[mask]).mean()
+                self.log(f"Valid/Hans_loss/{label_description}_{heuristic_name}", loss, on_step=False, on_epoch=True,
+                         prog_bar=True,
+                         logger=True)
+                self.log(f"Valid/Hans_acc/{label_description}_{heuristic_name}", acc, on_step=False, on_epoch=True,
+                         prog_bar=True, logger=True)
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""
