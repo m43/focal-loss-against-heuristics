@@ -1,8 +1,13 @@
+import io
 import json
 
 import pandas as pd
+import seaborn as sns
 import torch
 import torch.nn.functional as F
+import wandb
+from PIL import Image
+from matplotlib import pyplot as plt
 from pytorch_lightning import LightningModule
 from pytorch_lightning.loggers import WandbLogger
 from torch.optim import AdamW
@@ -52,12 +57,13 @@ class BertForNLI(LightningModule):
         output = self.forward(**batch)
 
         onehot_labels = F.one_hot(batch["labels"], num_classes=3).float()
-        loss = self.loss_criterion(output.logits, onehot_labels).mean()
+        loss = self.loss_criterion(output.logits, onehot_labels)
         preds = output.logits.argmax(dim=-1)
         acc = (preds == batch["labels"]).sum() / len(preds)
 
         results = {
-            "mnli_loss": loss,
+            "mnli_loss": loss.mean(),
+            "mnli_datapoint_loss": loss,
             "mnli_acc": acc,
             "mnli_datapoint_count": len(preds),
         }
@@ -77,8 +83,8 @@ class BertForNLI(LightningModule):
     def training_step(self, batch, batch_idx):
         results = self.mnli_step(batch)
 
-        results_to_log = {f"Train/{k}": v for k, v in results.items() if k not in ["mnli_datapoint_count"]}
-        self.log_dict(results_to_log, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log(f"Train/mnli_loss", results["mnli_loss"], on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log(f"Train/mnli_acc", results["mnli_acc"], on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log(f"Train/mnli_datapoint_count", results["mnli_datapoint_count"], on_step=True, on_epoch=True,
                  prog_bar=True, logger=True, add_dataloader_idx=False, reduce_fx="sum")
 
@@ -92,9 +98,10 @@ class BertForNLI(LightningModule):
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         if dataloader_idx == 0:
             results = self.mnli_step(batch)
-            results_to_log = {f"Valid/{k}": v for k, v in results.items() if k not in ["mnli_datapoint_count"]}
-            self.log_dict(results_to_log, on_step=True, on_epoch=True, prog_bar=True, logger=True,
-                          add_dataloader_idx=False)
+            self.log(f"Valid/mnli_loss", results["mnli_loss"], on_step=True, on_epoch=True, prog_bar=True, logger=True,
+                     add_dataloader_idx=False)
+            self.log(f"Valid/mnli_acc", results["mnli_acc"], on_step=True, on_epoch=True, prog_bar=True, logger=True,
+                     add_dataloader_idx=False)
             self.log(f"Valid/mnli_datapoint_count", results["mnli_datapoint_count"], on_step=True, on_epoch=True,
                      prog_bar=True, logger=True, add_dataloader_idx=False, reduce_fx="sum")
         else:
@@ -124,7 +131,45 @@ class BertForNLI(LightningModule):
                 logger: WandbLogger = logger
                 logger.log_text(f"{log_key}", dataframe=batch_df)
 
+    @staticmethod
+    def log_plot_to_wandb(wandb_logger, log_key, backend=plt, dpi=200):
+        with io.BytesIO() as f:
+            backend.savefig(f, dpi=dpi, format='png')
+            im = Image.open(f)
+            wandb_logger.log({log_key: wandb.Image(im)})
+
+    def _log_loss_histogram(self, losses, split, metric_name, log_df=False, bins=72, height=4.5, dpi=200):
+        df = pd.DataFrame({metric_name: losses})
+        grid = sns.displot(data=df, x=metric_name, height=height, bins=bins)
+        grid.fig.suptitle(f"[Epoch {self.current_epoch}] {split} {metric_name} histogram", fontsize=16)
+        grid.set_titles(col_template="{col_name}", row_template="{row_name}")
+        grid.tight_layout()
+
+        for logger in self.loggers:
+            if isinstance(logger, WandbLogger):
+                logger.experiment.log({f'{split}/Verbose/{metric_name}_histogram': wandb.Histogram(losses)})
+                self.log_plot_to_wandb(logger.experiment, f'{split}/Verbose/{metric_name}_histogram_seaborn',
+                                       backend=grid, dpi=dpi)
+                if log_df:
+                    logger.experiment.log({f"{split}/Verbose/{metric_name}_df": df})
+
+        plt.close()
+
+    def training_epoch_end(self, outputs):
+        # MNLI
+        mnli_results = outputs
+
+        losses = torch.cat([x["mnli_datapoint_loss"] for x in mnli_results]).detach().cpu().numpy()
+        self._log_loss_histogram(losses, "Train", "mnli_loss", log_df=True)
+
     def validation_epoch_end(self, outputs):
+        # MNLI
+        mnli_results = outputs[0]
+
+        losses = torch.cat([x["mnli_datapoint_loss"] for x in mnli_results]).detach().cpu().numpy()
+        self._log_loss_histogram(losses, "Valid", "mnli_loss", log_df=False)
+
+        # HANS
         hans_results = outputs[1]
 
         preds = torch.cat([x["preds"] for x in hans_results]).detach().cpu().numpy()
@@ -137,6 +182,7 @@ class BertForNLI(LightningModule):
         self.log("Valid/hans_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         self.log("Valid/hans_acc", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         self.log("Valid/hans_count", float(len(preds)), on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self._log_loss_histogram(losses, "Valid", "hans_loss", log_df=False)
 
         for target_label, label_description in enumerate(["entailment", "non_entailment"]):
             for heuristic_name, heuristic_idx in HEURISTIC_TO_INTEGER.items():
