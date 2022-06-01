@@ -15,7 +15,7 @@ from transformers import AutoConfig, AutoModelForSequenceClassification, BertFor
     PreTrainedTokenizerBase, AutoTokenizer, get_linear_schedule_with_warmup
 from transformers.modeling_outputs import SequenceClassifierOutput
 
-from src.constants import HEURISTIC_TO_INTEGER
+from src.constants import HEURISTIC_TO_INTEGER, SampleType
 from src.model.focalloss import FocalLoss
 from src.utils.util import get_logger
 
@@ -64,6 +64,7 @@ class BertForNLI(LightningModule):
         results = {
             "mnli_loss": loss.mean(),
             "mnli_datapoint_loss": loss,
+            "mnli_datapoint_type": batch["type"],
             "mnli_acc": acc,
             "mnli_datapoint_count": len(preds),
         }
@@ -155,18 +156,31 @@ class BertForNLI(LightningModule):
 
         plt.close()
 
+    def _log_interesting_mnli_losses(self, prefix:str, types, losses):
+        for sample_type in SampleType:
+            mask = types == sample_type.value
+            loss_per_type = losses[mask].mean()
+            self.log(f"{prefix}/mnli_{sample_type.name.lower()}_loss", loss_per_type, on_step=False, on_epoch=True,
+                     prog_bar=True, logger=True)
+
     def training_epoch_end(self, outputs):
         # MNLI
         mnli_results = outputs
 
+        types = torch.cat([x["mnli_datapoint_type"] for x in mnli_results]).detach().cpu().numpy()
         losses = torch.cat([x["mnli_datapoint_loss"] for x in mnli_results]).detach().cpu().numpy()
+
+        self._log_interesting_mnli_losses("Train", types, losses)
         self._log_loss_histogram(losses, "Train", "mnli_loss", log_df=True)
 
     def validation_epoch_end(self, outputs):
         # MNLI
         mnli_results = outputs[0]
 
+        types = torch.cat([x["mnli_datapoint_type"] for x in mnli_results]).detach().cpu().numpy()
         losses = torch.cat([x["mnli_datapoint_loss"] for x in mnli_results]).detach().cpu().numpy()
+
+        self._log_interesting_mnli_losses("Train", types, losses)
         self._log_loss_histogram(losses, "Valid", "mnli_loss", log_df=False)
 
         # HANS
