@@ -118,6 +118,7 @@ class ExperimentDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         return DataLoader(self.mnli_dataset['train'],
                           batch_size=self.batch_size,
+                          shuffle=True,
                           collate_fn=self.collator_fn)  # type:ignore
 
     def val_dataloader(self):
