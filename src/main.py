@@ -33,6 +33,7 @@ def get_parser_main_model():
     parser.add_argument('--precision', type=int, default=16)
     parser.add_argument('--early_stopping_patience', type=int, default=50)
     parser.add_argument('--accumulate_grad_batches', type=int, default=4)
+    parser.add_argument('--num_hans_train_examples', type=int, default=0, help='number of HANS train examples')
 
     # model hparams
     parser.add_argument('--focal_loss_gamma', type=float, default=0.0, help='gamma used in focal loss')
@@ -50,6 +51,7 @@ def main(config):
 
     dm = ExperimentDataModule(
         batch_size=config.batch_size,
+        num_hans_train_examples=config.num_hans_train_examples,
         num_workers=config.num_workers,
     )
     nlitransformer = BertForNLI(
