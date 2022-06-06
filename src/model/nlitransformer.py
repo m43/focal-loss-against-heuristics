@@ -59,13 +59,14 @@ class BertForNLI(LightningModule):
         onehot_labels = F.one_hot(batch["labels"], num_classes=3).float()
         loss = self.loss_criterion(output.logits, onehot_labels)
         preds = output.logits.argmax(dim=-1)
-        acc = (preds == batch["labels"]).sum() / len(preds)
+        true_preds = (preds == batch["labels"])
 
         results = {
             "mnli_loss": loss.mean(),
             "mnli_datapoint_loss": loss,
             "mnli_datapoint_type": batch["type"],
-            "mnli_acc": acc,
+            "mnli_acc": true_preds.mean(),
+            "mnli_true_preds": preds,
             "mnli_datapoint_count": len(preds),
         }
         return results
@@ -156,11 +157,14 @@ class BertForNLI(LightningModule):
 
         plt.close()
 
-    def _log_interesting_mnli_losses(self, prefix:str, types, losses):
+    def _log_mnli_metrics_per_sample_type(self, prefix:str, types, losses, true_preds):
         for sample_type in SampleType:
             mask = types == sample_type.value
             loss_per_type = losses[mask].mean()
+            acc_per_type = true_preds[mask].mean()
             self.log(f"{prefix}/mnli_{sample_type.name.lower()}_loss", loss_per_type, on_step=False, on_epoch=True,
+                     prog_bar=True, logger=True)
+            self.log(f"{prefix}/mnli_{sample_type.name.lower()}_accuracy", acc_per_type, on_step=False, on_epoch=True,
                      prog_bar=True, logger=True)
 
     def training_epoch_end(self, outputs):
@@ -169,8 +173,9 @@ class BertForNLI(LightningModule):
 
         types = torch.cat([x["mnli_datapoint_type"] for x in mnli_results]).detach().cpu().numpy()
         losses = torch.cat([x["mnli_datapoint_loss"] for x in mnli_results]).detach().cpu().numpy()
+        true_preds = torch.cat([x["mnli_true_preds"] for x in mnli_results]).detach().cpu().numpy()
 
-        self._log_interesting_mnli_losses("Train", types, losses)
+        self._log_mnli_metrics_per_sample_type("Train", types, losses, true_preds)
         self._log_loss_histogram(losses, "Train", "mnli_loss", log_df=True)
 
     def validation_epoch_end(self, outputs):
@@ -179,8 +184,9 @@ class BertForNLI(LightningModule):
 
         types = torch.cat([x["mnli_datapoint_type"] for x in mnli_results]).detach().cpu().numpy()
         losses = torch.cat([x["mnli_datapoint_loss"] for x in mnli_results]).detach().cpu().numpy()
+        true_preds = torch.cat([x["mnli_true_preds"] for x in mnli_results]).detach().cpu().numpy()
 
-        self._log_interesting_mnli_losses("Train", types, losses)
+        self._log_mnli_metrics_per_sample_type("Train", types, losses, true_preds)
         self._log_loss_histogram(losses, "Valid", "mnli_loss", log_df=False)
 
         # HANS
