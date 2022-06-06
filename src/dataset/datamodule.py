@@ -36,6 +36,21 @@ class ExperimentDataModule(pl.LightningDataModule):
         load_dataset("hans", split='validation')
         load_dataset("multi_nli")
 
+    def _process_mnli(self, sample):
+        sample_type = SampleType.STANDARD
+        if sample['premise'] == sample['hypothesis']:
+            sample_type = SampleType.TRIVIAL if sample['label'] == 0 else SampleType.NOISE
+        else:
+            tokenized_premise = self.tokenizer(sample['premise'], add_special_tokens=False)['input_ids']
+            tokenized_hypothesis = self.tokenizer(sample['hypothesis'], add_special_tokens=False)['input_ids']
+            if all(token in tokenized_premise for token in tokenized_hypothesis):
+                sample_type = SampleType.HEURISTIC_E if sample['label'] == 0 else SampleType.HEURISTIC_NE
+
+        new_attributes = {'type': sample_type.value}
+        new_attributes.update(self.tokenizer(sample['premise'], sample['hypothesis']))
+
+        return new_attributes
+
     def setup(self, stage: str):
         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(self.tokenizer_str)
 
@@ -52,21 +67,6 @@ class ExperimentDataModule(pl.LightningDataModule):
                            for sample in batch['label']]
             return res
 
-        def process_mnli(sample):
-            sample_type = SampleType.STANDARD
-            if sample['premise'] == sample['hypothesis']:
-                sample_type = SampleType.TRIVIAL if sample['label'] == 0 else SampleType.NOISE
-
-            tokenized_premise = self.tokenizer(sample['premise'], add_special_tokens=False)['input_ids']
-            tokenized_hypothesis = self.tokenizer(sample['hypothesis'], add_special_tokens=False)['input_ids']
-            if all(token in tokenized_premise for token in tokenized_hypothesis):
-                sample_type = SampleType.HEURISTIC_E if sample['label'] == 0 else SampleType.HEURISTIC_NE
-
-            new_attributes = {'type': sample_type.value}
-            new_attributes.update(self.tokenizer(sample['premise'], sample['hypothesis']))
-
-            return new_attributes
-
         self.hans_dataset_validation = load_dataset("hans", split='validation').map(
             tokenize_hans,
             batched=True,
@@ -78,7 +78,7 @@ class ExperimentDataModule(pl.LightningDataModule):
         )
         log.info(f"Hans validation dataset loaded, datapoints: {len(self.hans_dataset_validation)}")
 
-        self.mnli_dataset = load_dataset("multi_nli").map(process_mnli)
+        self.mnli_dataset = load_dataset("multi_nli").map(self._process_mnli)
         self.mnli_dataset.set_format(
             type='torch',
             columns=['input_ids', 'token_type_ids', 'attention_mask', 'label', 'type']
