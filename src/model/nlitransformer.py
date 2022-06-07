@@ -1,5 +1,6 @@
 import io
 import json
+import os
 
 import pandas as pd
 import seaborn as sns
@@ -157,7 +158,7 @@ class BertForNLI(LightningModule):
 
         plt.close()
 
-    def _log_mnli_metrics_per_sample_type(self, prefix:str, types, losses, true_preds):
+    def _log_mnli_metrics_per_sample_type(self, prefix: str, types, losses, true_preds):
         for sample_type in SampleType:
             mask = types == sample_type.value
             loss_per_type = losses[mask].mean()
@@ -167,27 +168,49 @@ class BertForNLI(LightningModule):
             self.log(f"{prefix}/mnli_{sample_type.name.lower()}_accuracy", acc_per_type, on_step=False, on_epoch=True,
                      prog_bar=True, logger=True)
 
-    def training_epoch_end(self, outputs):
-        # MNLI
-        mnli_results = outputs
-
+    def _mnli_epoch_end(self, split: str, mnli_results):
         types = torch.cat([x["mnli_datapoint_type"] for x in mnli_results]).detach().cpu().numpy()
         losses = torch.cat([x["mnli_datapoint_loss"] for x in mnli_results]).detach().cpu().numpy()
         true_preds = torch.cat([x["mnli_true_preds"] for x in mnli_results]).detach().cpu().numpy()
 
-        self._log_mnli_metrics_per_sample_type("Train", types, losses, true_preds)
-        self._log_loss_histogram(losses, "Train", "mnli_loss", log_df=True)
+        self._log_mnli_metrics_per_sample_type(split, types, losses, true_preds)
+        self._log_loss_histogram(losses, split, "mnli_loss", log_df=False)
+
+        # Create a DataFrame to be used in post-run logs processing to create visuals for the paper report
+        mnli_df = pd.DataFrame({
+            "type": types,
+            "type_str": [SampleType(t).name.title() for t in types],
+            "loss": losses,
+            "true_preds": true_preds,
+            "epoch": self.current_epoch,
+            "step": self.global_step,
+        })
+        # Log the dataframe to wandb
+        for logger in self.loggers:
+            if isinstance(logger, WandbLogger):
+                logger: WandbLogger = logger
+                csv_path = os.path.join(
+                    logger.experiment.dir,
+                    f"{split}_mnli_epoch_end_df_epoch-{self.current_epoch}_step-{self.global_step}.csv"
+                )
+                mnli_df.to_csv(csv_path)
+                artifact = wandb.Artifact(
+                    name=f"{logger.experiment.name}-{split}-mnli_epoch_end_df",
+                    type="df",
+                    metadata={"epoch": self.current_epoch, "step": self.global_step},
+                )
+                artifact.add_file(csv_path, "df.csv")
+                logger.experiment.log_artifact(artifact)
+
+    def training_epoch_end(self, outputs):
+        # MNLI
+        mnli_results = outputs
+        self._mnli_epoch_end("Train", mnli_results)
 
     def validation_epoch_end(self, outputs):
         # MNLI
         mnli_results = outputs[0]
-
-        types = torch.cat([x["mnli_datapoint_type"] for x in mnli_results]).detach().cpu().numpy()
-        losses = torch.cat([x["mnli_datapoint_loss"] for x in mnli_results]).detach().cpu().numpy()
-        true_preds = torch.cat([x["mnli_true_preds"] for x in mnli_results]).detach().cpu().numpy()
-
-        self._log_mnli_metrics_per_sample_type("Train", types, losses, true_preds)
-        self._log_loss_histogram(losses, "Valid", "mnli_loss", log_df=False)
+        self._mnli_epoch_end("Valid", mnli_results)
 
         # HANS
         hans_results = outputs[1]
@@ -218,6 +241,39 @@ class BertForNLI(LightningModule):
                          logger=True)
                 self.log(f"Valid/Hans_acc/{label_description}_{heuristic_name}", acc, on_step=False, on_epoch=True,
                          prog_bar=True, logger=True)
+
+        # Create a DataFrame to be used in post-run logs processing to create visuals for the paper report
+        INTEGER_TO_HEURISTIC = {v: k.title().replace("_", " ") for k, v in HEURISTIC_TO_INTEGER.items()}
+        hans_df = pd.DataFrame({
+            "preds": preds,
+            "labels": labels,
+            "heuristics": heuristics,
+            "heuristics_str": [INTEGER_TO_HEURISTIC[h] for h in heuristics],
+            "losses": losses,
+            "epoch": self.current_epoch,
+            "step": self.global_step,
+        })
+        # Log the dataframe to wandb
+        for logger in self.loggers:
+            if isinstance(logger, WandbLogger):
+                logger: WandbLogger = logger
+                csv_path = os.path.join(
+                    logger.experiment.dir,
+                    f"Valid_hans_epoch_end_df_epoch-{self.current_epoch}_step-{self.global_step}.csv"
+                )
+                hans_df.to_csv(csv_path)
+                artifact = wandb.Artifact(
+                    name=f"{logger.experiment.name}-Valid-hans_epoch_end_df",
+                    type="df",
+                    metadata={"epoch": self.current_epoch, "step": self.global_step},
+                )
+                artifact.add_file(csv_path, "df.csv")
+                logger.experiment.log_artifact(artifact)
+        # # Log the dataframe to wandb
+        # for logger in self.loggers:
+        #     if isinstance(logger, WandbLogger):
+        #         logger: WandbLogger = logger
+        #         logger.experiment.log({f"Valid/Verbose/hans_epoch_end_df": hans_df})
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""
