@@ -91,7 +91,7 @@ def main(config):
     model_checkpoint_callback = ModelCheckpoint(monitor=early_stopping_metric, save_last=True, verbose=True, )
     learning_rate_monitor_callback = LearningRateMonitor(logging_interval='step')
     callbacks = [
-        early_stopping_callback,
+        # early_stopping_callback,
         model_checkpoint_callback,
         learning_rate_monitor_callback]
 
@@ -109,6 +109,11 @@ def main(config):
             # strategy=DDPStrategy(process_group_backend="gloo"),
             accumulate_grad_batches=config.accumulate_grad_batches,
             val_check_interval=1 / 3,
+            num_sanity_val_steps=0,
+
+            # ~~~ Uncomment for fast debugging ~~~ #
+            # limit_train_batches=50,
+            # limit_val_batches=50,
         )
     else:
         trainer = Trainer(
