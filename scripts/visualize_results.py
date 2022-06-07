@@ -95,19 +95,19 @@ if __name__ == '__main__':
         train_mnli_df = load_all_tables(
             wandb_run=wrun,
             artifact_filter_str="Train-mnli_epoch_end_df",
-            csv_file_path_in_artifact='csv',
+            csv_file_path_in_artifact='df.csv',
         )
         valid_mnli_df = load_all_tables(
             wandb_run=wrun,
             artifact_filter_str="Valid-mnli_epoch_end_df",
-            csv_file_path_in_artifact='csv',
+            csv_file_path_in_artifact='df.csv',
         )
 
         # HANS dataframes
         valid_hans_df = load_all_tables(
             wandb_run=wrun,
             artifact_filter_str="Valid-hans_epoch_end_df",
-            csv_file_path_in_artifact='csv',
+            csv_file_path_in_artifact='df.csv',
         )
 
         # ~~~ The Ridgeline plot ~~~ #
