@@ -59,14 +59,14 @@ class BertForNLI(LightningModule):
         onehot_labels = F.one_hot(batch["labels"], num_classes=3).float()
         loss = self.loss_criterion(output.logits, onehot_labels)
         preds = output.logits.argmax(dim=-1)
-        true_preds = (preds == batch["labels"])
+        true_preds = (preds == batch["labels"]).float()
 
         results = {
             "mnli_loss": loss.mean(),
             "mnli_datapoint_loss": loss,
             "mnli_datapoint_type": batch["type"],
             "mnli_acc": true_preds.mean(),
-            "mnli_true_preds": preds,
+            "mnli_true_preds": true_preds,
             "mnli_datapoint_count": len(preds),
         }
         return results
