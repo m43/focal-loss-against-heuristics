@@ -256,9 +256,43 @@ sbatch_configurations = {
             ])
         ]
     },
+    "sbatch_06": {
+        "debug": False,
+        "commands": [
+            f"python -m src.main"
+            f" --experiment_name bertfornli-exp1"
+            f" --experiment_version"
+            f" 'S6.{i + 1:02}_gamma={gamma:.1f}_n-hans={n_hans}_wdecay={weight_decay}_bs=32_accum={accu}'"
+            f" --gpus -1"
+            f" --focal_loss_gamma {gamma}"
+            f" --accumulate_grad_batches {accu}"
+            f" --lr 1e-3"
+            f" --batch_size 32"
+            f" --warmup {(5 * 12272) // accu}"
+            f" --n_epochs 15"
+            f" --early_stopping_patience 10"
+            f" --weight_decay {weight_decay}"
+            f" --gradient_clip 0"
+            f" --adam_epsilon 1e-8"
+            f" --precision 16"
+            f" --num_hans_train_examples {n_hans}"
+            for i, (gamma, weight_decay, accu, n_hans) in enumerate([
+                # Warmup of 5 epochs:
+                #   392702 train samples
+                #   ceil(392702/32) = 12272 batches
+                #   5 epochs = 5*12272 batches = 61360 batches
+                #   1 batch = 1 update step, if no gradients are accumulated
+                # We accumulate gradients, thus: accumulate_grad_batches == 1 update step
+                #   5 epochs --> (5*12272 / accumulate_grad_batches) update steps
+                (0, 0.0, 16, 0),
+                (2, 0.0, 16, 0),
+                (10, 0.0, 16, 0),
+            ])
+        ]
+    },
 }
 
-SBATCH_ID = 'sbatch_05'
+SBATCH_ID = 'sbatch_06'
 OUTPUT_FOLDER = f"./sbatch/{SBATCH_ID}"
 
 sbatch_config = sbatch_configurations[SBATCH_ID]
