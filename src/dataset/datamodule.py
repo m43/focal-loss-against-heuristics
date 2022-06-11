@@ -1,3 +1,4 @@
+import pdb
 from typing import Optional
 
 import pytorch_lightning as pl
@@ -16,13 +17,20 @@ log = get_logger(__name__)
 @DATAMODULE_REGISTRY
 class ExperimentDataModule(pl.LightningDataModule):
 
-    def __init__(self, batch_size: int, num_hans_train_examples: int = 0, num_workers: int = 4):
+    def __init__(
+            self,
+            batch_size: int,
+            num_hans_train_examples: int = 0,
+            num_workers: int = 4,
+            tokenizer_model_max_length: int = 512
+    ):
         super().__init__()
 
         self.batch_size = batch_size
         self.num_hans_train_examples = num_hans_train_examples
         self.num_workers = num_workers
         self.tokenizer_str = PRETRAINED_MODEL_ID
+        self.tokenizer_model_max_length = tokenizer_model_max_length
 
         # attributes that may be downloaded and are initialized
         # in prepare data
@@ -53,6 +61,7 @@ class ExperimentDataModule(pl.LightningDataModule):
 
     def setup(self, stage: str):
         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(self.tokenizer_str)
+        self.tokenizer.model_max_length = self.tokenizer_model_max_length
 
         # note that this batch size is the processing batch size for tokenization,
         # not the training batch size, I used the same because I'm lazy

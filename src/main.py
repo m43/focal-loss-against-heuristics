@@ -37,11 +37,15 @@ def get_parser_main_model():
 
     # model hparams
     parser.add_argument('--focal_loss_gamma', type=float, default=0.0, help='gamma used in focal loss')
+    parser.add_argument('--optimizer_name', type=str, default="adamw", choices=["adam", "adamw"])
+    parser.add_argument('--scheduler_name', type=str, default="linear", choices=["linear", "polynomial"])
     parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='weight decay')
-    parser.add_argument('--warmup_steps', type=int, default=7200, help='number of warmup steps')
+    parser.add_argument('--warmup_steps', type=int, default=None, help='number of warmup steps')
+    parser.add_argument('--warmup_ratio', type=float, default=None, help='ratio of warmup over all epochs')
     parser.add_argument('--adam_epsilon', type=float, default=1e-8, help='Adam epsilon')
     parser.add_argument('--gradient_clip_val', type=float, default=None, help='gradient clipping value')
+    parser.add_argument('--tokenizer_model_max_length', type=int, default=512, help='number of warmup steps')
 
     return parser
 
@@ -53,6 +57,7 @@ def main(config):
         batch_size=config.batch_size,
         num_hans_train_examples=config.num_hans_train_examples,
         num_workers=config.num_workers,
+        tokenizer_model_max_length=config.tokenizer_model_max_length,
     )
     nlitransformer = BertForNLI(
         focal_loss_gamma=config.focal_loss_gamma,
@@ -61,6 +66,9 @@ def main(config):
         weight_decay=config.weight_decay,
         adam_epsilon=config.adam_epsilon,
         warmup_steps=config.warmup_steps,
+        warmup_ratio=config.warmup_ratio,
+        scheduler_name=config.scheduler_name,
+        optimizer_name=config.optimizer_name,
     )
 
     if config.experiment_version is None:

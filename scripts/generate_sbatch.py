@@ -64,7 +64,7 @@ sbatch_configurations = {
             " --accumulate_grad_batches 4"
             " --lr 1e-3"
             " --batch_size 32"
-            " --warmup 15000"
+            " --warmup_steps 15000"
             " --n_epochs 100"
             " --early_stopping_patience 50"
             " --weight_decay 0.0"
@@ -80,7 +80,7 @@ sbatch_configurations = {
             " --accumulate_grad_batches 16"
             " --lr 1e-3"
             " --batch_size 32"
-            " --warmup 3750"
+            " --warmup_steps 3750"
             " --n_epochs 100"
             " --early_stopping_patience 50"
             " --weight_decay 0.0"
@@ -96,7 +96,7 @@ sbatch_configurations = {
             " --accumulate_grad_batches 4"
             " --lr 2e-5"
             " --batch_size 32"
-            " --warmup 15000"
+            " --warmup_steps 15000"
             " --n_epochs 100"
             " --early_stopping_patience 50"
             " --weight_decay 0.0"
@@ -112,7 +112,7 @@ sbatch_configurations = {
             " --accumulate_grad_batches 16"
             " --lr 2e-5"
             " --batch_size 32"
-            " --warmup 3750"
+            " --warmup_steps 3750"
             " --n_epochs 100"
             " --early_stopping_patience 50"
             " --weight_decay 0.0"
@@ -133,7 +133,7 @@ sbatch_configurations = {
             f" --accumulate_grad_batches 4"
             f" --lr 1e-3"
             f" --batch_size 32"
-            f" --warmup 15000"
+            f" --warmup_steps 15000"
             f" --n_epochs 15"
             f" --early_stopping_patience 10"
             f" --weight_decay {weight_decay}"
@@ -162,7 +162,7 @@ sbatch_configurations = {
             f" --accumulate_grad_batches {accu}"
             f" --lr 1e-3"
             f" --batch_size 32"
-            f" --warmup {(5 * 12272) // accu}"
+            f" --warmup_steps {(5 * 12272) // accu}"
             f" --n_epochs 15"
             f" --early_stopping_patience 10"
             f" --weight_decay {weight_decay}"
@@ -198,7 +198,7 @@ sbatch_configurations = {
             f" --accumulate_grad_batches {accu}"
             f" --lr 1e-3"
             f" --batch_size 32"
-            f" --warmup {(5 * 12272) // accu}"
+            f" --warmup_steps {(5 * 12272) // accu}"
             f" --n_epochs 15"
             f" --early_stopping_patience 10"
             f" --weight_decay {weight_decay}"
@@ -231,7 +231,7 @@ sbatch_configurations = {
             f" --accumulate_grad_batches {accu}"
             f" --lr 1e-3"
             f" --batch_size 32"
-            f" --warmup {(5 * 12272) // accu}"
+            f" --warmup_steps {(5 * 12272) // accu}"
             f" --n_epochs 15"
             f" --early_stopping_patience 10"
             f" --weight_decay {weight_decay}"
@@ -268,7 +268,7 @@ sbatch_configurations = {
             f" --accumulate_grad_batches {accu}"
             f" --lr 1e-3"
             f" --batch_size 32"
-            f" --warmup {(5 * 12272) // accu}"
+            f" --warmup_steps {(5 * 12272) // accu}"
             f" --n_epochs 15"
             f" --early_stopping_patience 10"
             f" --weight_decay {weight_decay}"
@@ -290,9 +290,48 @@ sbatch_configurations = {
             ])
         ]
     },
+    "sbatch_07": {
+        "debug": False,
+        "commands": [
+            "python -m src.main"
+            " --experiment_name bertfornli-exp1"
+            " --experiment_version"
+            " 'S7.{i:02d}_gamma={gamma:.1f}_{optimizer_name}'"
+            " --optimizer_name {optimizer_name}"
+            " --scheduler_name {scheduler_name}"
+            " --gpus -1"
+            " --adam_epsilon {adam_epsilon}"
+            " --weight_decay {weight_decay}"
+            " --warmup_ratio {warmup_ratio}"
+            " --gradient_clip_val {grad_clip}"
+            " --tokenizer_model_max_length {model_max_length}"
+            " --focal_loss_gamma {gamma}"
+            " --accumulate_grad_batches {accu}"
+            " --lr {lr}"
+            " --batch_size 32"
+            " --n_epochs 3"
+            " --early_stopping_patience 10"
+            " --precision 16"
+            " --num_hans_train_examples {n_hans}".format(
+                optimizer_name=optimizer_name,
+                i=i + 1,
+                scheduler_name="polynomial",
+                lr=2e-5,
+                weight_decay=0.01,
+                warmup_ratio=0.1,
+                accu=1,
+                gamma=0.0,
+                grad_clip=1.0,
+                n_hans=0,
+                model_max_length=128,
+                adam_epsilon=1e-6,
+            )
+            for i, optimizer_name in enumerate(["adamw", "adam"])
+        ]
+    },
 }
 
-SBATCH_ID = 'sbatch_06'
+SBATCH_ID = 'sbatch_07'
 OUTPUT_FOLDER = f"./sbatch/{SBATCH_ID}"
 
 sbatch_config = sbatch_configurations[SBATCH_ID]
