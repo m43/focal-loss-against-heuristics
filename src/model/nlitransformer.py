@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 from pytorch_lightning import LightningModule
 from pytorch_lightning.loggers import WandbLogger
 from torch.optim import AdamW, Adam
-from transformers import AutoConfig, AutoModelForSequenceClassification, BertForSequenceClassification, \
+from transformers import AutoModelForSequenceClassification, BertForSequenceClassification, \
     PreTrainedTokenizerBase, AutoTokenizer, get_linear_schedule_with_warmup, get_polynomial_decay_schedule_with_warmup
 from transformers.modeling_outputs import SequenceClassifierOutput
 
@@ -29,11 +29,19 @@ class BertForNLI(LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
         self.save_hyperparameters()
+        print("-" * 72)
         print(f"self.hparams={self.hparams}")
+        print("-" * 72)
 
-        self.bert_config = AutoConfig.from_pretrained(PRETRAINED_MODEL_ID)
         self.bert: BertForSequenceClassification = AutoModelForSequenceClassification.from_pretrained(
-            PRETRAINED_MODEL_ID, num_labels=3)
+            PRETRAINED_MODEL_ID,
+            hidden_dropout_prob=self.hparams["hidden_dropout_prob"],
+            attention_probs_dropout_prob=self.hparams["attention_probs_dropout_prob"],
+            classifier_dropout=self.hparams["classifier_dropout"],
+            num_labels=3,
+        )
+        print(self.bert.config)
+
         assert isinstance(self.bert, BertForSequenceClassification)
 
         # initialized in self.setup()
