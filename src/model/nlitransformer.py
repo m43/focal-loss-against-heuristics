@@ -26,6 +26,21 @@ log = get_logger(__name__)
 
 
 class BertForNLI(LightningModule):
+    """
+    A PyTorch Lightning module that is a wrapper around
+    a HuggingFace BERT for sequence classification model.
+    The BERT model has a classification head on top and
+    will be used to perform Natural Language Inference (NLI).
+
+    Besides wrapping BERT, this class provides the functionality
+    of training on MultiNLI dataset and evaluating on MultiNLI
+    and HANS dataset. It also adds verbose logging.
+
+    The module uses a linear warmup of configurable length
+    and can be configured to either use a polynomial
+    or a linear learning rate decay schedule.
+    """
+
     def __init__(self, **kwargs):
         super().__init__()
         self.save_hyperparameters()

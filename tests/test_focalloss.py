@@ -7,7 +7,6 @@ from src.model.focalloss import FocalLoss
 
 
 class TestFocalLoss(unittest.TestCase):
-
     def test_gamma_zero_same_as_CE(self):
         """
         Test that when gamma is 0 we are similar to CE
@@ -29,6 +28,9 @@ class TestFocalLoss(unittest.TestCase):
         )
 
     def test_formula_applied_correctly(self):
+        """
+        Test that focal loss computes the loss as we would expect it for a few samples.
+        """
         logits = torch.tensor([
             [10, 9, -5],
             [0, 2, -10]

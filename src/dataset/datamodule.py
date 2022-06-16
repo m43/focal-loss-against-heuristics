@@ -1,4 +1,3 @@
-import pdb
 from typing import Optional
 
 import pytorch_lightning as pl
@@ -16,6 +15,9 @@ log = get_logger(__name__)
 
 @DATAMODULE_REGISTRY
 class ExperimentDataModule(pl.LightningDataModule):
+    """
+    PyTorch Lightning datamodule to load and preprocess the MultiNLI and HANS datasets.
+    """
 
     def __init__(
             self,
@@ -96,15 +98,13 @@ class ExperimentDataModule(pl.LightningDataModule):
         log.info(f"   len(self.mnli_dataset['train'])={len(self.mnli_dataset['train'])}")
         log.info(f"   len(self.mnli_dataset['validation_matched'])={len(self.mnli_dataset['validation_matched'])}")
 
-
-
-        if(self.num_hans_train_examples > 0):
+        if (self.num_hans_train_examples > 0):
             hans_dataset_train = load_dataset("hans", split='train').map(
                 tokenize_hans,
                 batched=True,
                 batch_size=self.batch_size,
             )
-    
+
             # rename features to match MNLI
             features = hans_dataset_train.features.copy()
             features['label'] = ClassLabel(num_classes=3, names=['entailment', 'neutral', 'contradiction'])
@@ -117,9 +117,9 @@ class ExperimentDataModule(pl.LightningDataModule):
             log.info(f"Hans train dataset loaded, datapoints: {len(hans_dataset_train)}")
 
             hans_dataset_train = hans_dataset_train.shuffle()
-            hans_dataset_train = hans_dataset_train.select(range(self.num_hans_train_examples)) 
+            hans_dataset_train = hans_dataset_train.select(range(self.num_hans_train_examples))
             self.mnli_dataset['train'] = concatenate_datasets([self.mnli_dataset['train'], hans_dataset_train])
-        
+
             self.mnli_dataset.set_format(
                 type='torch',
                 columns=['input_ids', 'token_type_ids', 'attention_mask', 'label', 'type']
@@ -127,7 +127,6 @@ class ExperimentDataModule(pl.LightningDataModule):
 
             log.info(f"HANS training examples added to the MNLI training dataset splits loaded:")
             log.info(f"   len(self.mnli_dataset['train'])={len(self.mnli_dataset['train'])}")
-
 
         self.collator = DataCollatorWithPadding(self.tokenizer, padding='longest', return_tensors="pt")
         self.collator_fn = lambda x: self.collator(x).data

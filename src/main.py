@@ -20,12 +20,19 @@ logging.basicConfig(level=logging.INFO)
 
 
 def get_parser_main_model():
+    """
+    Get the argument parser used to configure the run.
+
+    :return: argparse.ArgumentParser
+    """
     parser = argparse.ArgumentParser()
 
-    # experiment
+    # logging
     parser.add_argument('--experiment_name', type=str, default='bertfornli-exp1')
     parser.add_argument('--checkpoint_path', type=str, default=None, help="Checkpoint used to restore training state")
     parser.add_argument('--experiment_version', type=str, default=None)
+
+    # experiment configuration
     parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs')
     parser.add_argument('--num_workers', type=int, default=20, help='number of dataloader workers')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size')
@@ -58,6 +65,12 @@ def get_parser_main_model():
 
 
 def main(config):
+    """
+    Configure and run the training and evaluation of the `model.nlitrasformer.BertForNLI` model.
+
+    :param config: The run configuration.
+    """
+    # 0. Ensure reproducibility of results
     pl.seed_everything(72)
 
     # 1. Prepare datamodule
@@ -148,7 +161,7 @@ def main(config):
             callbacks=callbacks,
         )
     trainer.fit(nlitransformer, dm, ckpt_path=config.checkpoint_path)
-    # log.info(f"best_model_path={model_checkpoint_callback.best_model_path}")
+    log.info(f"best_model_path={model_checkpoint_callback.best_model_path}")
 
 
 if __name__ == "__main__":

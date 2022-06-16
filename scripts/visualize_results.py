@@ -1,3 +1,8 @@
+"""
+Script that collects the necessary data from wandb.ai and creates a ridgeplot
+with the loss distribution across sample type and training epochs.
+"""
+
 import os.path
 
 import matplotlib.pyplot as plt
@@ -8,9 +13,7 @@ import wandb
 sns.set_theme(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
 
 WANDB_RUN_PATHS = [
-    # "user72/bertfornli-test/S5.01_gamma-0.0_n-hans-100_wdecay-0.0_bs-32_accum-16_06.07_16.30.43",
-    # "user72/bertfornli-test/mate_06.07_17.21.56",
-    "user72/bertfornli-test/jure_06.07_19.49.56",
+    "user72/bertfornli-exp1/S7.03_gamma-0.0_adamw-1e-06_lr-2e-05_e-10_precision-32_06.11_11.18.07",
 ]
 
 

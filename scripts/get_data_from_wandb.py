@@ -1,8 +1,18 @@
+"""
+Script to gather the necessary data from wandb.ai to create the tables reported in the paper.
+"""
+
 import pandas as pd
 import wandb
 
 
 def get_summary_from_run(run):
+    """
+    Get the numbers reported for the epoch with the best `Valid/mnli_acc_epoch` value.
+
+    :param run: The wandb run object, `wandb.apis.public.Run`.
+    :return: A pandas dataframe with the relevant numbers.
+    """
     train_keys = [
         'epoch',
         "Train/mnli_acc_epoch",

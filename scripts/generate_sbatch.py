@@ -1,3 +1,7 @@
+"""
+Script used to configure experiments and generate Sbatch files that can be run with SLURM.
+"""
+
 import os
 import pathlib
 
