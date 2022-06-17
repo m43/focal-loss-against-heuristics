@@ -80,7 +80,7 @@ python -m src.main --experiment_name bertfornli-exp1 \
   --lr 2e-05 \
   --batch_size 32 \
   --n_epochs 10 \
-  --early_stopping_patience 10 \
+  --early_stopping_patience 30 \
   --precision 32 \
   --num_hans_train_examples 0
 ```
