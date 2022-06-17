@@ -3,10 +3,7 @@
 [![Python 3.7](https://img.shields.io/badge/python-3.9-blue.svg)](https://www.python.org/downloads/release/python-390/)
 [![MIT License](https://img.shields.io/apm/l/atomic-design-ui.svg?)](https://github.com/axelmarmet/optml-proj/blob/master/LICENSE)
 
-    There is no such thing as a perfect dataset.
-    Sometimes there are underlying heuristics that allow deep neural networks to take shortcuts in the learning process, resulting in poor generalization.
-    Instead of using cross entropy, we explore whether focal loss constrains the model not to use heuristics.
-    Our findings suggest that focal loss gives slightly worse generalization results and is not more sample-efficient.
+There is no such thing as a perfect dataset. Sometimes there are underlying heuristics that allow deep neural networks to take shortcuts in the learning process, resulting in poor generalization. Instead of using cross entropy, we explore whether focal loss constrains the model not to use heuristics. Our findings suggest that focal loss gives slightly worse generalization results and is not more sample-efficient.
 
 ## Table of Contents
 
