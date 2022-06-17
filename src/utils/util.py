@@ -2,6 +2,11 @@ import logging
 import pathlib
 from datetime import datetime
 
+import numpy as np
+from scipy.optimize import minimize
+
+from tqdm import tqdm
+
 from pytorch_lightning.utilities import rank_zero_only
 
 
@@ -64,6 +69,41 @@ def get_logger(name=__name__, level=logging.INFO) -> logging.Logger:
         setattr(logger, level, rank_zero_only(getattr(logger, level)))
 
     return logger
+
+
+# heavily inspired by
+# https://moonbooks.org/Articles/How-to-numerically-compute-the-inverse-function-in-python-using-scipy-/
+def get_numerical_approx_inverse_focal_loss(gamma, start=0.01, resolution=0.01):
+    def focal_loss(prob):
+        y = -(1 - prob) ** gamma * np.log(prob)
+        return y
+
+    def diff(x, a):
+        yt = focal_loss(x)
+        return (yt - a) ** 2
+
+    f_preimage = np.arange(start, 1.0, resolution)
+    f_image = focal_loss(f_preimage)
+
+    g_preimage = np.arange(np.min(f_image), np.max(f_image), resolution)
+    g_image = np.zeros(g_preimage.shape)
+
+    for idx, x_value in enumerate(tqdm(g_preimage)):
+        res = minimize(diff, 1.0, args=(x_value), method='Nelder-Mead', tol=1e-6)
+        g_image[idx] = res.x[0]
+
+    return f_image, g_image
+
+
+def approx_probs(loss, gamma, f_start=0.01, resolution=0.001):
+    f_image, g_image = get_numerical_approx_inverse_focal_loss(gamma, start=f_start, resolution=resolution)
+    g_indices = ((loss - f_image.min()) / resolution).astype(int)
+
+    print(f"before {g_indices.shape}")
+    g_indices = np.minimum(g_indices, g_image.shape[0] - 1)
+    print(f"after {g_indices.shape}")
+
+    return g_image[g_indices]
 
 
 log = get_logger(__name__)
