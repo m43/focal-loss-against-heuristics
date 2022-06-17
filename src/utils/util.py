@@ -45,13 +45,12 @@ def nice_print(msg, last=False):
         print()
 
 
-class AttrDict(dict):
-    def __init__(self, *args, **kwargs):
-        super(AttrDict, self).__init__(*args, **kwargs)
-        self.__dict__ = self
+def ensure_dir(dirname: str):
+    """
+    Ensure that the given path is a directory and create it if it does not exist.
 
-
-def ensure_dir(dirname):
+    :param dirname: The path to the directory.
+    """
     dirname = pathlib.Path(dirname)
     if not dirname.is_dir():
         dirname.mkdir(parents=True, exist_ok=False)

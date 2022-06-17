@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 import torch
 import wandb
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, CSVLogger
 from pytorch_lightning.loggers import WandbLogger
 
@@ -20,12 +20,19 @@ logging.basicConfig(level=logging.INFO)
 
 
 def get_parser_main_model():
+    """
+    Get the argument parser used to configure the run.
+
+    :return: argparse.ArgumentParser
+    """
     parser = argparse.ArgumentParser()
 
-    # experiment
+    # logging
     parser.add_argument('--experiment_name', type=str, default='bertfornli-exp1')
     parser.add_argument('--checkpoint_path', type=str, default=None, help="Checkpoint used to restore training state")
     parser.add_argument('--experiment_version', type=str, default=None)
+
+    # experiment configuration
     parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs')
     parser.add_argument('--num_workers', type=int, default=20, help='number of dataloader workers')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size')
@@ -36,33 +43,45 @@ def get_parser_main_model():
     parser.add_argument('--num_hans_train_examples', type=int, default=0, help='number of HANS train examples')
 
     # model hparams
+    parser.add_argument('--bert_hidden_dropout_prob', type=float, default=0.1,
+                        help='The dropout probability for all fully connected layers in the embeddings, encoder, '
+                             'and pooler.')
+    parser.add_argument('--bert_attention_probs_dropout_prob', type=float, default=0.1,
+                        help='The dropout ratio for the attention probabilities.')
+    parser.add_argument('--bert_classifier_dropout', type=float, default=None,
+                        help='The dropout ratio for the classification head.')
     parser.add_argument('--focal_loss_gamma', type=float, default=0.0, help='gamma used in focal loss')
+    parser.add_argument('--optimizer_name', type=str, default="adamw", choices=["adam", "adamw"])
+    parser.add_argument('--scheduler_name', type=str, default="linear", choices=["linear", "polynomial"])
     parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='weight decay')
-    parser.add_argument('--warmup_steps', type=int, default=7200, help='number of warmup steps')
+    parser.add_argument('--warmup_steps', type=int, default=None, help='number of warmup steps')
+    parser.add_argument('--warmup_ratio', type=float, default=None, help='ratio of warmup over all epochs')
     parser.add_argument('--adam_epsilon', type=float, default=1e-8, help='Adam epsilon')
     parser.add_argument('--gradient_clip_val', type=float, default=None, help='gradient clipping value')
+    parser.add_argument('--tokenizer_model_max_length', type=int, default=512, help='number of warmup steps')
 
     return parser
 
 
 def main(config):
+    """
+    Configure and run the training and evaluation of the `model.nlitrasformer.BertForNLI` model.
+
+    :param config: The run configuration.
+    """
+    # 0. Ensure reproducibility of results
     pl.seed_everything(72)
 
+    # 1. Prepare datamodule
     dm = ExperimentDataModule(
         batch_size=config.batch_size,
         num_hans_train_examples=config.num_hans_train_examples,
         num_workers=config.num_workers,
-    )
-    nlitransformer = BertForNLI(
-        focal_loss_gamma=config.focal_loss_gamma,
-        learning_rate=config.lr,
-        batch_size=config.batch_size,
-        weight_decay=config.weight_decay,
-        adam_epsilon=config.adam_epsilon,
-        warmup_steps=config.warmup_steps,
+        tokenizer_model_max_length=config.tokenizer_model_max_length,
     )
 
+    # 2. Prepare loggers
     if config.experiment_version is None:
         config.experiment_version = f"{config.experiment_name}" \
                                     f"__gamma={config.focal_loss_gamma}" \
@@ -76,12 +95,29 @@ def main(config):
         version=config.experiment_version.replace("=", "-"),
         settings=wandb.Settings(start_method='fork'),
     )
-    wandb_logger.watch(nlitransformer, log="all")
     tb_logger = TensorBoardLogger("logs", name=config.experiment_name, version=config.experiment_version, )
     csv_logger = CSVLogger("logs", name=config.experiment_name, version=config.experiment_version, )
     loggers = [wandb_logger, tb_logger, csv_logger]
     log.info(config)
 
+    # 3. Prepare model
+    nlitransformer = BertForNLI(
+        hidden_dropout_prob=config.bert_hidden_dropout_prob,
+        attention_probs_dropout_prob=config.bert_attention_probs_dropout_prob,
+        classifier_dropout=config.bert_classifier_dropout,
+        focal_loss_gamma=config.focal_loss_gamma,
+        learning_rate=config.lr,
+        batch_size=config.batch_size,
+        weight_decay=config.weight_decay,
+        adam_epsilon=config.adam_epsilon,
+        warmup_steps=config.warmup_steps,
+        warmup_ratio=config.warmup_ratio,
+        scheduler_name=config.scheduler_name,
+        optimizer_name=config.optimizer_name,
+    )
+    wandb_logger.watch(nlitransformer, log="all")
+
+    # 4. Prepare callbacks
     early_stopping_metric = "Valid/mnli_loss_epoch"
     early_stopping_callback = EarlyStopping(
         monitor=early_stopping_metric, mode="min",
@@ -91,10 +127,12 @@ def main(config):
     model_checkpoint_callback = ModelCheckpoint(monitor=early_stopping_metric, save_last=True, verbose=True, )
     learning_rate_monitor_callback = LearningRateMonitor(logging_interval='step')
     callbacks = [
-        # early_stopping_callback,
+        early_stopping_callback,
         model_checkpoint_callback,
-        learning_rate_monitor_callback]
+        learning_rate_monitor_callback,
+    ]
 
+    # 5. Run
     if torch.cuda.is_available() and config.gpus != 0:
         trainer = Trainer(
             max_epochs=config.n_epochs,

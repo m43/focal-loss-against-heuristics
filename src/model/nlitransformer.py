@@ -11,9 +11,9 @@ from PIL import Image
 from matplotlib import pyplot as plt
 from pytorch_lightning import LightningModule
 from pytorch_lightning.loggers import WandbLogger
-from torch.optim import AdamW
-from transformers import AutoConfig, AutoModelForSequenceClassification, BertForSequenceClassification, \
-    PreTrainedTokenizerBase, AutoTokenizer, get_linear_schedule_with_warmup
+from torch.optim import AdamW, Adam
+from transformers import AutoModelForSequenceClassification, BertForSequenceClassification, \
+    PreTrainedTokenizerBase, AutoTokenizer, get_linear_schedule_with_warmup, get_polynomial_decay_schedule_with_warmup
 from transformers.modeling_outputs import SequenceClassifierOutput
 
 from src.constants import HEURISTIC_TO_INTEGER, SampleType
@@ -26,21 +26,37 @@ log = get_logger(__name__)
 
 
 class BertForNLI(LightningModule):
-    def __init__(
-            self,
-            focal_loss_gamma: float,
-            learning_rate: float,
-            batch_size: int,
-            weight_decay: float,
-            adam_epsilon: float,
-            warmup_steps: int,
-    ):
+    """
+    A PyTorch Lightning module that is a wrapper around
+    a HuggingFace BERT for sequence classification model.
+    The BERT model has a classification head on top and
+    will be used to perform Natural Language Inference (NLI).
+
+    Besides wrapping BERT, this class provides the functionality
+    of training on MultiNLI dataset and evaluating on MultiNLI
+    and HANS dataset. It also adds verbose logging.
+
+    The module uses a linear warmup of configurable length
+    and can be configured to either use a polynomial
+    or a linear learning rate decay schedule.
+    """
+
+    def __init__(self, **kwargs):
         super().__init__()
         self.save_hyperparameters()
+        print("-" * 72)
+        print(f"self.hparams={self.hparams}")
+        print("-" * 72)
 
-        self.bert_config = AutoConfig.from_pretrained(PRETRAINED_MODEL_ID)
         self.bert: BertForSequenceClassification = AutoModelForSequenceClassification.from_pretrained(
-            PRETRAINED_MODEL_ID, num_labels=3)
+            PRETRAINED_MODEL_ID,
+            hidden_dropout_prob=self.hparams["hidden_dropout_prob"],
+            attention_probs_dropout_prob=self.hparams["attention_probs_dropout_prob"],
+            classifier_dropout=self.hparams["classifier_dropout"],
+            num_labels=3,
+        )
+        print(self.bert.config)
+
         assert isinstance(self.bert, BertForSequenceClassification)
 
         # initialized in self.setup()
@@ -280,51 +296,69 @@ class BertForNLI(LightningModule):
 
         model = self.bert
         no_decay = ["bias", "LayerNorm.weight"]
-        normal_lr = ["classifier"]
         optimizer_grouped_parameters = [
             {
-                "name": "1_w-decay_normal-lr",
+                "name": "1_w-decay",
                 "params": [
                     p for n, p in model.named_parameters()
-                    if not any(nd in n for nd in no_decay) and any(nlr in n for nlr in normal_lr)
+                    if not any(nd in n for nd in no_decay)
                 ],
-                "lr": self.hparams.learning_rate,
                 "weight_decay": self.hparams.weight_decay,
             },
             {
-                "name": "2_no-decay_normal-lr",
+                "name": "2_no-decay",
                 "params": [
                     p for n, p in model.named_parameters()
-                    if any(nd in n for nd in no_decay) and any(nlr in n for nlr in normal_lr)
+                    if any(nd in n for nd in no_decay)
                 ],
-                "lr": self.hparams.learning_rate,
-                "weight_decay": 0.0,
-            },
-            {
-                "name": "3_w-decay_lower-lr",
-                "params": [
-                    p for n, p in model.named_parameters()
-                    if not any(nd in n for nd in no_decay) and not any(nlr in n for nlr in normal_lr)
-                ],
-                "lr": self.hparams.learning_rate / 100,
-                "weight_decay": self.hparams.weight_decay,
-            },
-            {
-                "name": "4_no-decay_lower-lr",
-                "params": [
-                    p for n, p in model.named_parameters()
-                    if any(nd in n for nd in no_decay) and not any(nlr in n for nlr in normal_lr)
-                ],
-                "lr": self.hparams.learning_rate / 100,
                 "weight_decay": 0.0,
             },
         ]
-        optimizer = AdamW(optimizer_grouped_parameters, eps=self.hparams.adam_epsilon)
+        if self.hparams.optimizer_name == "adamw":
+            optimizer = AdamW(
+                optimizer_grouped_parameters,
+                lr=self.hparams.learning_rate,
+                weight_decay=self.hparams.weight_decay,
+                eps=self.hparams.adam_epsilon,
+            )
+        elif self.hparams.optimizer_name == "adam":
+            optimizer = Adam(
+                optimizer_grouped_parameters,
+                lr=self.hparams.learning_rate,
+                weight_decay=self.hparams.weight_decay,
+                eps=self.hparams.adam_epsilon,
+            )
+        else:
+            raise ValueError(f"Invalid optimizer_name given: {self.hparams.optimizer_name}")
 
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self.hparams.warmup_steps,
-            num_training_steps=self.trainer.estimated_stepping_batches,
-        )
-        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+        train_steps = self.trainer.estimated_stepping_batches
+
+        if self.hparams.warmup_ratio is not None and self.hparams.warmup_steps is not None:
+            raise ValueError("Either warmup_steps or warmup_ratio should be given, but not both.")
+
+        if self.hparams.warmup_steps:
+            warmup_steps = self.hparams.warmup_steps
+        elif self.hparams.warmup_ratio:
+            warmup_steps = train_steps * self.hparams.warmup_ratio
+        else:
+            raise ValueError("Either warmup_steps or warmup_ratio should be given, but none were given.")
+
+        if self.hparams.scheduler_name == "linear":
+            scheduler = get_linear_schedule_with_warmup(
+                optimizer,
+                num_warmup_steps=warmup_steps,
+                num_training_steps=train_steps,
+            )
+            scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+        elif self.hparams.scheduler_name == "polynomial":
+            scheduler = get_polynomial_decay_schedule_with_warmup(
+                optimizer,
+                num_warmup_steps=warmup_steps,
+                num_training_steps=train_steps,
+                lr_end=0.0,
+            )
+            scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+        else:
+            raise ValueError(f"Invalid scheduler_name given: {self.hparams.optimizer_name}")
+
         return [optimizer], [scheduler]

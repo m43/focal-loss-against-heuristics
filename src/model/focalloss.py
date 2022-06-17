@@ -4,7 +4,16 @@ import torch.nn.functional as F
 
 
 class FocalLoss(nn.Module):
+    """
+    Focal loss implemented as a PyTorch module.
+    [Original paper](https://arxiv.org/pdf/1708.02002.pdf).
+    """
+
     def __init__(self, gamma: float, reduction='none'):
+        """
+        :param gamma: What value of Gamma to use. Value of 0 corresponds to Cross entropy.
+        :param reduction: Reduction to be done on top of datapoint-level losses.
+        """
         super().__init__()
 
         assert reduction in ['none', 'sum', 'mean']

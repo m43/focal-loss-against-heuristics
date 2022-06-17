@@ -6,10 +6,10 @@ HEURISTIC_TO_INTEGER = {
     'constituent': 2
 }
 
+
 class SampleType(IntEnum):
     STANDARD = 0
     TRIVIAL = 1
     NOISE = 2
     HEURISTIC_NE = 3
     HEURISTIC_E = 4
-
