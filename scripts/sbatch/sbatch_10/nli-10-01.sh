@@ -28,6 +28,6 @@ conda activate OptML
 # Run
 date
 printf "Run configured and environment setup. Gonna run now.\n\n"
-python -m src.main --experiment_name bertfornli-exp1 --experiment_version 'S10.01_gamma=5.0_adamw-1e-06_bs=1x32_lr=2e-05_wd=0.01_e=10_prec=16' --optimizer_name adamw --scheduler_name polynomial --gpus -1 --adam_epsilon 1e-06 --weight_decay 0.01 --warmup_ratio 0.1 --gradient_clip_val 1.0 --tokenizer_model_max_length 128 --focal_loss_gamma 5.0 --accumulate_grad_batches 1 --lr 2e-05 --batch_size 32 --n_epochs 10 --early_stopping_patience 10 --precision 16 --num_hans_train_examples 0
+python -m src.main --experiment_name bertfornli-exp1 --experiment_version 'S10.01_gamma=5.0_adamw-1e-06_bs=1x32_lr=2e-05_wd=0.01_e=10_prec=16' --optimizer_name adamw --scheduler_name polynomial --gpus -1 --adam_epsilon 1e-06 --weight_decay 0.01 --warmup_ratio 0.1 --gradient_clip_val 1.0 --tokenizer_model_max_length 128 --focal_loss_gamma 5.0 --accumulate_grad_batches 1 --lr 2e-05 --batch_size 32 --n_epochs 10 --early_stopping_patience 30 --precision 16 --num_hans_train_examples 0
 echo FINISHED at $(date)
 
