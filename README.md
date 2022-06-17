@@ -7,12 +7,12 @@ TODO Put abstract here
 
 ## Table of Contents
 
-- [Environment set-up](#environment-set-up)
-- [Reproducing results](#reproducing-results)
-- [Experiment logs](#experiment-logs)
-- [Project structure](#project-structure)
-- [License](#license)
-- [Authors](#authors)
+  - [Environment set-up](#environment-set-up)
+  - [Reproducing results](#reproducing-results)
+  - [Experiment logs](#experiment-logs)
+  - [Project structure](#project-structure)
+  - [License](#license)
+  - [Authors](#authors)
 
 
 ## Environment set-up
@@ -112,9 +112,12 @@ $ tree
 │   ├── dataset/     # Dataset and dataloading
 │   │   └── datamodule.py    # MultiNLI and HANS datamodule
 │   │
-│   ├── model/       # Model related code 
+│   ├── model/       # Model related code
 │   │   ├── focalloss.py       # Focal loss implementation
 │   │   └── nlitransformer.py  # BERT for NLI implementation
+│   │
+│   ├── notebooks/       # Notebooks
+│   │   └── histogram_plots.ipynb       # Notebook used for plotting
 │   │
 │   └── utils/       # General utilities
 │       └── util.py       # Utilites like get_logger and horse plotting
