@@ -19,11 +19,11 @@ DEBUG_HEADER = """#SBATCH --chdir /scratch/izar/rajic/nli
 PRODUCTION_HEADER = """#SBATCH --chdir /scratch/izar/rajic/nli
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=20
-#SBATCH --mem=90G
+#SBATCH --cpus-per-task=40
+#SBATCH --mem=180G
 #SBATCH --partition=gpu
 #SBATCH --qos=gpu
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:2
 #SBATCH --time=18:00:00
 """
 
@@ -314,7 +314,7 @@ sbatch_configurations = {
             " --lr {lr}"
             " --batch_size {batch_size}"
             " --n_epochs {n_epochs}"
-            " --early_stopping_patience 10"
+            " --early_stopping_patience 30"
             " --precision {precision}"
             " --num_hans_train_examples {n_hans}".format(
                 optimizer_name=optimizer_name,
@@ -364,7 +364,7 @@ sbatch_configurations = {
             " --lr {lr}"
             " --batch_size {batch_size}"
             " --n_epochs {n_epochs}"
-            " --early_stopping_patience 10"
+            " --early_stopping_patience 30"
             " --precision {precision}"
             " --num_hans_train_examples {n_hans}".format(
                 optimizer_name=optimizer_name,
@@ -409,7 +409,7 @@ sbatch_configurations = {
             " --lr {lr}"
             " --batch_size {batch_size}"
             " --n_epochs {n_epochs}"
-            " --early_stopping_patience 10"
+            " --early_stopping_patience 30"
             " --precision {precision}"
             " --num_hans_train_examples {n_hans}"
             " --bert_hidden_dropout_prob {bert_hidden_dropout_prob}"
@@ -465,7 +465,7 @@ sbatch_configurations = {
             " --lr {lr}"
             " --batch_size {batch_size}"
             " --n_epochs {n_epochs}"
-            " --early_stopping_patience 10"
+            " --early_stopping_patience 30"
             " --precision {precision}"
             " --num_hans_train_examples {n_hans}".format(
                 optimizer_name="adamw",
@@ -510,7 +510,7 @@ sbatch_configurations = {
             " --lr {lr}"
             " --batch_size {batch_size}"
             " --n_epochs {n_epochs}"
-            " --early_stopping_patience 10"
+            " --early_stopping_patience 30"
             " --precision {precision}"
             " --num_hans_train_examples {n_hans}".format(
                 optimizer_name="adamw",
@@ -542,7 +542,7 @@ sbatch_configurations = {
 
 }
 
-SBATCH_ID = 'sbatch_09'
+SBATCH_ID = 'sbatch_07'
 OUTPUT_FOLDER = f"./sbatch/{SBATCH_ID}"
 
 sbatch_config = sbatch_configurations[SBATCH_ID]
