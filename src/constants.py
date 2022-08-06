@@ -6,6 +6,14 @@ HEURISTIC_TO_INTEGER = {
     'constituent': 2
 }
 
+DATASET_TO_INTEGER = {
+    "mnli_train": 0,
+    "mnli_validation_matched": 1,
+    "mnli_validation_mismatched": 2,
+    "hans_train": 3,
+    "hans_validation": 4,
+}
+
 
 class SampleType(IntEnum):
     STANDARD = 0

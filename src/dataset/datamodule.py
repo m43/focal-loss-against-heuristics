@@ -1,12 +1,13 @@
 from typing import Optional
 
+import numpy as np
 import pytorch_lightning as pl
 from datasets import load_dataset, concatenate_datasets, ClassLabel
 from pytorch_lightning.utilities.cli import DATAMODULE_REGISTRY
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, PreTrainedTokenizerBase, DataCollatorWithPadding
 
-from src.constants import HEURISTIC_TO_INTEGER, SampleType
+from src.constants import HEURISTIC_TO_INTEGER, SampleType, DATASET_TO_INTEGER
 from src.model.nlitransformer import PRETRAINED_MODEL_ID
 from src.utils.util import get_logger
 
@@ -34,9 +35,8 @@ class ExperimentDataModule(pl.LightningDataModule):
         self.tokenizer_str = PRETRAINED_MODEL_ID
         self.tokenizer_model_max_length = tokenizer_model_max_length
 
-        # attributes that may be downloaded and are initialized
-        # in prepare data
         self.tokenizer = None
+        self.collator_fn = None
         self.hans_dataset = None
         self.mnli_dataset = None
         self.collator = None
@@ -46,87 +46,118 @@ class ExperimentDataModule(pl.LightningDataModule):
         load_dataset("hans", split='validation')
         load_dataset("multi_nli")
 
-    def _process_mnli(self, sample):
+    @staticmethod
+    def load_tokenizer(tokenizer_str, tokenizer_model_max_length):
+        tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(tokenizer_str)
+        tokenizer.model_max_length = tokenizer_model_max_length
+        return tokenizer
+
+    @staticmethod
+    def _process_mnli(sample, tokenizer):
         sample_type = SampleType.STANDARD
         if sample['premise'] == sample['hypothesis']:
             sample_type = SampleType.TRIVIAL if sample['label'] == 0 else SampleType.NOISE
         else:
-            tokenized_premise = self.tokenizer(sample['premise'], add_special_tokens=False)['input_ids']
-            tokenized_hypothesis = self.tokenizer(sample['hypothesis'], add_special_tokens=False)['input_ids']
+            tokenized_premise = tokenizer(sample['premise'], add_special_tokens=False)['input_ids']
+            tokenized_hypothesis = tokenizer(sample['hypothesis'], add_special_tokens=False)['input_ids']
             if all(token in tokenized_premise for token in tokenized_hypothesis):
                 sample_type = SampleType.HEURISTIC_E if sample['label'] == 0 else SampleType.HEURISTIC_NE
 
         new_attributes = {'type': sample_type.value}
-        new_attributes.update(self.tokenizer(sample['premise'], sample['hypothesis']))
+        new_attributes.update(tokenizer(sample['premise'], sample['hypothesis']))
 
         return new_attributes
 
-    def setup(self, stage: str):
-        self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(self.tokenizer_str)
-        self.tokenizer.model_max_length = self.tokenizer_model_max_length
-
-        # note that this batch size is the processing batch size for tokenization,
-        # not the training batch size, I used the same because I'm lazy
-
-        def tokenize_hans(batch):
-            res = self.tokenizer(
-                batch['premise'],
-                batch['hypothesis']
-            )
-            res['heuristic'] = [HEURISTIC_TO_INTEGER[sample] for sample in batch['heuristic']]
-            res['type'] = [SampleType.HEURISTIC_E.value if (sample == 0) else SampleType.HEURISTIC_NE.value
-                           for sample in batch['label']]
-            return res
-
-        self.hans_dataset_validation = load_dataset("hans", split='validation').map(
-            tokenize_hans,
-            batched=True,
-            batch_size=self.batch_size,
+    def _setup_mnli(self):
+        self.mnli_dataset = load_dataset("multi_nli").map(
+            self._process_mnli,
+            fn_kwargs={'tokenizer': self.tokenizer},
         )
-        self.hans_dataset_validation.set_format(
-            type='torch',
-            columns=['input_ids', 'token_type_ids', 'attention_mask', 'label', 'heuristic']
-        )
-        log.info(f"Hans validation dataset loaded, datapoints: {len(self.hans_dataset_validation)}")
-
-        self.mnli_dataset = load_dataset("multi_nli").map(self._process_mnli)
+        for subset in self.mnli_dataset.keys():
+            n = len(self.mnli_dataset[subset])
+            idx_col = np.arange(0, n)
+            dataset_col = np.repeat(DATASET_TO_INTEGER[f"mnli_{subset}"], n)
+            self.mnli_dataset[subset] = self.mnli_dataset[subset].add_column("idx", idx_col)
+            self.mnli_dataset[subset] = self.mnli_dataset[subset].add_column("dataset", dataset_col)
         self.mnli_dataset.set_format(
             type='torch',
-            columns=['input_ids', 'token_type_ids', 'attention_mask', 'label', 'type']
+            columns=['idx', 'dataset', 'input_ids', 'token_type_ids', 'attention_mask', 'label', 'type']
         )
         log.info(f"MNLI dataset splits loaded:")
         log.info(f"   len(self.mnli_dataset['train'])={len(self.mnli_dataset['train'])}")
         log.info(f"   len(self.mnli_dataset['validation_matched'])={len(self.mnli_dataset['validation_matched'])}")
 
-        if (self.num_hans_train_examples > 0):
-            hans_dataset_train = load_dataset("hans", split='train').map(
-                tokenize_hans,
-                batched=True,
-                batch_size=self.batch_size,
-            )
+    @staticmethod
+    def _process_hans(batch, tokenizer):
+        res = tokenizer(batch['premise'], batch['hypothesis'])
+        res['heuristic'] = [HEURISTIC_TO_INTEGER[sample] for sample in batch['heuristic']]
+        res['type'] = [
+            SampleType.HEURISTIC_E.value if (sample == 0) else SampleType.HEURISTIC_NE.value
+            for sample in batch['label']
+        ]
+        return res
 
-            # rename features to match MNLI
-            features = hans_dataset_train.features.copy()
-            features['label'] = ClassLabel(num_classes=3, names=['entailment', 'neutral', 'contradiction'])
-            hans_dataset_train = hans_dataset_train.map(
-                lambda batch: batch,
-                batched=True,
-                batch_size=self.batch_size,
-                features=features
-            )
-            log.info(f"Hans train dataset loaded, datapoints: {len(hans_dataset_train)}")
+    def _setup_hans(self):
+        self.hans_dataset_validation = load_dataset("hans", split='validation')
+        self.hans_dataset_validation = self.hans_dataset_validation.map(
+            self._process_hans,
+            batched=True,
+            batch_size=self.batch_size,
+            fn_kwargs={'tokenizer': self.tokenizer},
+        )
+        n = len(self.hans_dataset_validation)
+        idx_col = np.arange(0, n)
+        dataset_col = np.repeat(DATASET_TO_INTEGER[f"hans_validation"], n)
+        self.hans_dataset_validation = self.hans_dataset_validation.add_column("idx", idx_col)
+        self.hans_dataset_validation = self.hans_dataset_validation.add_column("dataset", dataset_col)
+        self.hans_dataset_validation.set_format(
+            type='torch',
+            columns=['idx', 'dataset', 'input_ids', 'token_type_ids', 'attention_mask', 'label', 'heuristic']
+        )
+        log.info(f"Hans validation dataset loaded, datapoints: {len(self.hans_dataset_validation)}")
 
-            hans_dataset_train = hans_dataset_train.shuffle()
-            hans_dataset_train = hans_dataset_train.select(range(self.num_hans_train_examples))
-            self.mnli_dataset['train'] = concatenate_datasets([self.mnli_dataset['train'], hans_dataset_train])
+    def _sprinkle_train_with_hans(self):
+        hans_dataset_train = load_dataset("hans", split='train').map(
+            self._process_hans,
+            batched=True,
+            batch_size=self.batch_size,
+        )
+        n = len(hans_dataset_train)
+        idx_col = np.arange(0, n)
+        dataset_col = np.repeat(DATASET_TO_INTEGER[f"hans_train"], n)
+        hans_dataset_train = hans_dataset_train.add_column("idx", idx_col)
+        hans_dataset_train = hans_dataset_train.add_column("dataset", dataset_col)
 
-            self.mnli_dataset.set_format(
-                type='torch',
-                columns=['input_ids', 'token_type_ids', 'attention_mask', 'label', 'type']
-            )
+        # rename features to match MNLI
+        features = hans_dataset_train.features.copy()
+        features['label'] = ClassLabel(num_classes=3, names=['entailment', 'neutral', 'contradiction'])
+        hans_dataset_train = hans_dataset_train.map(
+            lambda batch: batch,
+            batched=True,
+            batch_size=self.batch_size,
+            features=features
+        )
+        log.info(f"Hans train dataset loaded, datapoints: {len(hans_dataset_train)}")
 
-            log.info(f"HANS training examples added to the MNLI training dataset splits loaded:")
-            log.info(f"   len(self.mnli_dataset['train'])={len(self.mnli_dataset['train'])}")
+        hans_dataset_train = hans_dataset_train.shuffle()
+        hans_dataset_train = hans_dataset_train.select(range(self.num_hans_train_examples))
+        self.mnli_dataset['train'] = concatenate_datasets([self.mnli_dataset['train'], hans_dataset_train])
+
+        self.mnli_dataset.set_format(
+            type='torch',
+            columns=['idx', 'dataset', 'input_ids', 'token_type_ids', 'attention_mask', 'label', 'type']
+        )
+
+        log.info(f"HANS training examples added to the MNLI training dataset splits loaded:")
+        log.info(f"   len(self.mnli_dataset['train'])={len(self.mnli_dataset['train'])}")
+
+    def setup(self, stage: Optional[str] = None):
+        self.tokenizer = self.load_tokenizer(self.tokenizer_str, self.tokenizer_model_max_length)
+
+        self._setup_mnli()
+        self._setup_hans()
+        if self.num_hans_train_examples > 0:
+            self._sprinkle_train_with_hans()
 
         self.collator = DataCollatorWithPadding(self.tokenizer, padding='longest', return_tensors="pt")
         self.collator_fn = lambda x: self.collator(x).data
