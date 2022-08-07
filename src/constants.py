@@ -1,5 +1,12 @@
 from enum import IntEnum
 
+LABEL_TO_INTEGER = {
+    "entailment": 0,
+    "neutral": 1,
+    "contradiction": 2,
+}
+INTEGER_TO_LABEL = {v: k for k, v in LABEL_TO_INTEGER.items()}
+
 HEURISTIC_TO_INTEGER = {
     'none': -1,
     'lexical_overlap': 0,

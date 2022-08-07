@@ -11,6 +11,10 @@ visuals
 wandb
 slurm_logs
 
+data/*
+!data/mnli_validation_matched_hardness.csv
+!data/mnli_validation_mismatched_hardness.csv
+
 #######################################
 ############### PYCHARM ###############
 #######################################
@@ -147,7 +151,7 @@ dmypy.json
 .pyre/
 
 # input data, saved log, checkpoints
-data/
+# data/
 input/
 saved/
 datasets/
