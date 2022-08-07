@@ -97,11 +97,7 @@ def get_numerical_approx_inverse_focal_loss(gamma, start=0.01, resolution=0.01):
 def approx_probs(loss, gamma, f_start=0.01, resolution=0.001):
     f_image, g_image = get_numerical_approx_inverse_focal_loss(gamma, start=f_start, resolution=resolution)
     g_indices = ((loss - f_image.min()) / resolution).astype(int)
-
-    print(f"before {g_indices.shape}")
     g_indices = np.minimum(g_indices, g_image.shape[0] - 1)
-    print(f"after {g_indices.shape}")
-
     return g_image[g_indices]
 
 

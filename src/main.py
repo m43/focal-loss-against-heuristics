@@ -162,6 +162,8 @@ def main(config):
         )
     trainer.fit(nlitransformer, dm, ckpt_path=config.checkpoint_path)
     log.info(f"best_model_path={model_checkpoint_callback.best_model_path}")
+    log.info(f"best_model_score={model_checkpoint_callback.best_model_score}")
+    log.info(f"last_model_path={model_checkpoint_callback.last_model_path}")
 
 
 if __name__ == "__main__":
