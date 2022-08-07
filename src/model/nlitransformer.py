@@ -94,7 +94,7 @@ class BertForNLI(LightningModule):
         results = {
             "loss": loss.mean(),
             "acc": true_pred.mean(),
-            "count": len(pred),
+            "count": float(len(pred)),
             "datapoint_idx": batch["idx"],
             "datapoint_dataset": batch["dataset"],
             "datapoint_label": batch["labels"],
@@ -116,12 +116,16 @@ class BertForNLI(LightningModule):
             self._log_batch_for_debugging(f"{prefix}/Batch/batch-{batch_idx}_dataloader-{dataloader_idx}", batch)
 
         if dataset in MNLI_DATASET_INTEGER_IDENTIFIERS:
-            self.log(f"{prefix}/{dataset_str}_loss", results["loss"],
-                     on_step=True, on_epoch=True, prog_bar=True, logger=True)
-            self.log(f"{prefix}/{dataset_str}_acc", results["acc"],
-                     on_step=True, on_epoch=True, prog_bar=True, logger=True)
-            self.log(f"{prefix}/{dataset_str}_datapoint_count", results["count"],
-                     on_step=True, on_epoch=True, prog_bar=True, logger=True, add_dataloader_idx=False, reduce_fx="sum")
+            log_kwargs = {
+                'on_step': True,
+                'on_epoch': True,
+                'prog_bar': True,
+                'logger': True,
+                'add_dataloader_idx': False,
+            }
+            self.log(f"{prefix}/{dataset_str}_loss", results["loss"], **log_kwargs)
+            self.log(f"{prefix}/{dataset_str}_acc", results["acc"], **log_kwargs)
+            self.log(f"{prefix}/{dataset_str}_datapoint_count", results["count"], reduce_fx="sum", **log_kwargs)
 
     def _log_batch_for_debugging(self, log_key, batch):
         def jsonify(value):
@@ -169,11 +173,11 @@ class BertForNLI(LightningModule):
         n = len(results["datapoint_idx"])
         results["epoch"] = np.repeat(self.current_epoch, n)
         results["step"] = np.repeat(self.global_step, n)
-        results["heuristics_str"] = np.array([
+        results["datapoint_heuristics_str"] = np.array([
             INTEGER_TO_HEURISTIC[h]
             for h in results["datapoint_heuristic"]
         ])
-        results["handcrafted_type_str"] = np.array([
+        results["datapoint_handcrafted_type_str"] = np.array([
             HandcraftedType(t).name.title()
             for t in results["datapoint_handcrafted_type"]
         ])
@@ -216,10 +220,17 @@ class BertForNLI(LightningModule):
             mask = handcrafted_types == handcrafted_type.value
             loss_per_type = losses[mask].mean()
             acc_per_type = true_preds[mask].mean()
+            log_kwargs = {
+                'on_step': False,
+                'on_epoch': True,
+                'prog_bar': True,
+                'logger': True,
+                'add_dataloader_idx': False,
+            }
             self.log(f"{prefix}/HandcraftedType/{dataset_str}_{handcrafted_type.name.lower()}_loss", loss_per_type,
-                     on_step=False, on_epoch=True, prog_bar=True, logger=True)
+                     **log_kwargs)
             self.log(f"{prefix}/HandcraftedType/{dataset_str}_{handcrafted_type.name.lower()}_accuracy", acc_per_type,
-                     on_step=False, on_epoch=True, prog_bar=True, logger=True)
+                     **log_kwargs)
 
     def _log_hans_epoch_end(self, split, dataset_str, results):
         n = len(results["datapoint_idx"])
@@ -230,9 +241,16 @@ class BertForNLI(LightningModule):
         acc2 = (results["datapoint_pred"] == results["datapoint_label"]).sum() / len(results["datapoint_pred"])
         assert acc == acc2
 
-        self.log(f"{split}/{dataset_str}_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log(f"{split}/{dataset_str}_acc", acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log(f"{split}/{dataset_str}_count", float(n), on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        log_kwargs = {
+            'on_step': False,
+            'on_epoch': True,
+            'prog_bar': True,
+            'logger': True,
+            'add_dataloader_idx': False,
+        }
+        self.log(f"{split}/{dataset_str}_loss", loss, **log_kwargs)
+        self.log(f"{split}/{dataset_str}_acc", acc, **log_kwargs)
+        self.log(f"{split}/{dataset_str}_count", float(n), **log_kwargs)
 
         heuristics = results["datapoint_heuristic"]
         labels = results["datapoint_label"]
@@ -250,12 +268,8 @@ class BertForNLI(LightningModule):
 
                 loss = losses[mask].mean()
                 acc = (preds[mask] == labels[mask]).mean()
-                self.log(f"Valid/Hans_loss/{label_description}_{heuristic_name}", loss, on_step=False,
-                         on_epoch=True,
-                         prog_bar=True,
-                         logger=True)
-                self.log(f"Valid/Hans_acc/{label_description}_{heuristic_name}", acc, on_step=False, on_epoch=True,
-                         prog_bar=True, logger=True)
+                self.log(f"Valid/Hans_loss/{label_description}_{heuristic_name}", loss, **log_kwargs)
+                self.log(f"Valid/Hans_acc/{label_description}_{heuristic_name}", acc, **log_kwargs)
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""

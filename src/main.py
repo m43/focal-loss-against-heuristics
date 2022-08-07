@@ -118,7 +118,7 @@ def main(config):
     wandb_logger.watch(nlitransformer, log="all")
 
     # 4. Prepare callbacks
-    early_stopping_metric = "Valid/mnli_loss_epoch"
+    early_stopping_metric = "Valid/mnli_validation_matched_loss_epoch"
     early_stopping_callback = EarlyStopping(
         monitor=early_stopping_metric, mode="min",
         patience=config.early_stopping_patience,
