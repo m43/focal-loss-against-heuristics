@@ -84,7 +84,7 @@ class BertForNLI(LightningModule):
         loss = self.loss_criterion(output.logits, onehot_labels)
         pred = output.logits.argmax(dim=-1)
         true_pred = (pred == batch["labels"]).float()
-        prob = output.logits.softmax(-1)
+        prob = output.logits.softmax(-1).detach().clone()
         true_prob = prob.gather(-1, batch["labels"].unsqueeze(-1)).squeeze(-1)
         if "heuristic" in batch:  # HANS has the heuristic type, MNLI does not
             heuristic = batch["heuristic"]
@@ -100,7 +100,7 @@ class BertForNLI(LightningModule):
             "datapoint_label": batch["labels"],
             "datapoint_handcrafted_type": batch["handcrafted_type"],
             "datapoint_heuristic": heuristic,
-            "datapoint_loss": loss,
+            "datapoint_loss": loss.detach().clone(),
             "datapoint_pred": pred,
             "datapoint_true_pred": true_pred,
             "datapoint_prob": prob,
