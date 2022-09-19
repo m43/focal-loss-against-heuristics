@@ -9,6 +9,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, CSVLogger
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.strategies import DDPStrategy
 
 from src.dataset.datamodule import ExperimentDataModule
 from src.model.nlitransformer import BertForNLI
@@ -71,7 +72,7 @@ def main(config):
     :param config: The run configuration.
     """
     # 0. Ensure reproducibility of results
-    pl.seed_everything(72)
+    pl.seed_everything(72, workers=True)
 
     # 1. Prepare datamodule
     dm = ExperimentDataModule(
@@ -143,8 +144,8 @@ def main(config):
             gpus=config.gpus,
             precision=config.precision,
             accelerator="gpu",
-            strategy="dp",
-            # strategy=DDPStrategy(process_group_backend="gloo"),
+            # strategy="dp",
+            strategy=DDPStrategy(process_group_backend="gloo"),
             accumulate_grad_batches=config.accumulate_grad_batches,
             val_check_interval=1 / 3,
             num_sanity_val_steps=0,
@@ -154,11 +155,14 @@ def main(config):
             # limit_val_batches=50,
         )
     else:
+        print("\n\n*** Using CPU ***\n\n")
         trainer = Trainer(
             max_epochs=config.n_epochs,
             default_root_dir="logs",
-            logger=[wandb_logger, tb_logger, csv_logger],
+            logger=loggers,
             callbacks=callbacks,
+            # limit_train_batches=5,
+            # limit_val_batches=5,
         )
     trainer.fit(nlitransformer, dm, ckpt_path=config.checkpoint_path)
 

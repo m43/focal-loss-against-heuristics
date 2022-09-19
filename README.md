@@ -31,9 +31,9 @@ conda activate optml
 ```
 
 Then, install [PyTorch](https://pytorch.org/) 1.11.0 and [torchvision](https://pytorch.org/vision/stable/index.html)
-0.12.0. For example:
+0.12.0. For example with CUDA 11 support:
 ```bash
-conda install pytorch=1.11.0 torchvision=0.12.0 -c pytorch -y
+conda install pytorch==1.11.0 torchvision==0.12.0 torchaudio==0.11.0 cudatoolkit=11.3 -c pytorch
 ```
 
 Finally, install the required packages:
