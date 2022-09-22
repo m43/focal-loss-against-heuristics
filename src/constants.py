@@ -1,5 +1,13 @@
 from enum import IntEnum
 
+BERT_IDENTIFIER = 'BERT'
+T5_IDENTIFIER = 'T5'
+
+PRETRAINED_IDS = {
+    BERT_IDENTIFIER: 'bert-base-uncased',
+    T5_IDENTIFIER: 't5-small',
+}
+
 LABEL_TO_INTEGER = {
     "entailment": 0,
     "neutral": 1,
@@ -40,3 +48,6 @@ class HandcraftedType(IntEnum):
     NOISE = 2
     HEURISTIC_NE = 3
     HEURISTIC_E = 4
+
+
+T5_LABEL_PAD_LENGTH = 5

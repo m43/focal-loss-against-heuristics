@@ -1,71 +1,55 @@
 import json
 import os
+from abc import ABCMeta, abstractmethod
 
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn.functional as F
 import wandb
 from pytorch_lightning import LightningModule
 from pytorch_lightning.loggers import WandbLogger
+from torch.nn import functional as F
 from torch.optim import AdamW, Adam
-from transformers import AutoModelForSequenceClassification, BertForSequenceClassification, \
-    PreTrainedTokenizerBase, AutoTokenizer, get_linear_schedule_with_warmup, get_polynomial_decay_schedule_with_warmup
+from transformers import AutoModelForSequenceClassification, BertForSequenceClassification, PreTrainedTokenizerBase, \
+    AutoTokenizer, get_linear_schedule_with_warmup, get_polynomial_decay_schedule_with_warmup
+from transformers import T5ForConditionalGeneration
 from transformers.modeling_outputs import SequenceClassifierOutput
 
 from src.constants import *
 from src.model.focalloss import FocalLoss
 from src.utils.util import get_logger
 
-PRETRAINED_MODEL_ID = "bert-base-uncased"
+T5_ENTAILMENT_LABEL = torch.tensor([3, 35, 5756, 297, 1])  # 0
+T5_NEUTRAL_LABEL = torch.tensor([7163, 1, 0, 0, 0])  # 1
+T5_CONTRADICTION_LABEL = torch.tensor([27252, 1, 0, 0, 0])  # 2
 
 log = get_logger(__name__)
 
 
-class BertForNLI(LightningModule):
+class HuggingFaceTransformerForNLI(LightningModule, metaclass=ABCMeta):
     """
     A PyTorch Lightning module that is a wrapper around
-    a HuggingFace BERT for sequence classification model.
-    The BERT model has a classification head on top and
-    will be used to perform Natural Language Inference (NLI).
+    a HuggingFace transformer.
 
-    Besides wrapping BERT, this class provides the functionality
-    of training on MultiNLI dataset and evaluating on MultiNLI
-    and HANS dataset. It also adds verbose logging.
+    Other than wrapping a transformer, this class provides the
+    functionality of training on MultiNLI dataset and evaluating
+    on MultiNLI and HANS dataset. It also adds verbose logging.
 
     The module uses a linear warmup of configurable length
     and can be configured to either use a polynomial
     or a linear learning rate decay schedule.
     """
 
-    def __init__(self, **kwargs):
+    model_name: str
+
+    def __init__(self):
         super().__init__()
-        self.save_hyperparameters()
-        print("-" * 72)
-        print(f"self.hparams={self.hparams}")
-        print("-" * 72)
+        self.transformer = None
+        self.loss_criterion = None
 
-        self.bert: BertForSequenceClassification = AutoModelForSequenceClassification.from_pretrained(
-            PRETRAINED_MODEL_ID,
-            hidden_dropout_prob=self.hparams["hidden_dropout_prob"],
-            attention_probs_dropout_prob=self.hparams["attention_probs_dropout_prob"],
-            classifier_dropout=self.hparams["classifier_dropout"],
-            num_labels=3,
-        )
-        print(self.bert.config)
-
-        assert isinstance(self.bert, BertForSequenceClassification)
-
-        # initialized in self.setup()
-        self.loss_criterion = FocalLoss(self.hparams.focal_loss_gamma)
-
-    def forward(self, input_ids, attention_mask, token_type_ids, label=None, **kwargs) -> SequenceClassifierOutput:
-        output: SequenceClassifierOutput = self.bert.forward(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids
-        )
-        return output
+    @abstractmethod
+    def forward(self, *args, **kwargs):
+        pass
 
     def training_step(self, batch, batch_idx):
         results = self._step(batch)
@@ -77,36 +61,9 @@ class BertForNLI(LightningModule):
         self._step_log(batch, batch_idx, "Valid", results, dataloader_idx)
         return results
 
-    def _step(self, batch):
-        output = self.forward(**batch)
-
-        onehot_labels = F.one_hot(batch["labels"], num_classes=3).float()
-        loss = self.loss_criterion(output.logits, onehot_labels)
-        pred = output.logits.argmax(dim=-1)
-        true_pred = (pred == batch["labels"]).float()
-        prob = output.logits.softmax(-1).detach().clone()
-        true_prob = prob.gather(-1, batch["labels"].unsqueeze(-1)).squeeze(-1)
-        if "heuristic" in batch:  # HANS has the heuristic type, MNLI does not
-            heuristic = batch["heuristic"]
-        else:
-            heuristic = true_pred.new_ones(true_pred.shape) * -1.0
-
-        results = {
-            "loss": loss.mean(),
-            "acc": true_pred.mean(),
-            "count": float(len(pred)),
-            "datapoint_idx": batch["idx"],
-            "datapoint_dataset": batch["dataset"],
-            "datapoint_label": batch["labels"],
-            "datapoint_handcrafted_type": batch["handcrafted_type"],
-            "datapoint_heuristic": heuristic,
-            "datapoint_loss": loss.detach().clone(),
-            "datapoint_pred": pred,
-            "datapoint_true_pred": true_pred,
-            "datapoint_prob": prob,
-            "datapoint_true_prob": true_prob,
-        }
-        return results
+    @abstractmethod
+    def _step(self, **kwargs):
+        pass
 
     def _step_log(self, batch, batch_idx, prefix, results, dataloader_idx=0):
         dataset = results["datapoint_dataset"][0].item()
@@ -133,7 +90,7 @@ class BertForNLI(LightningModule):
                 return value.tolist()
             return value
 
-        debug_tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(PRETRAINED_MODEL_ID)
+        debug_tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(PRETRAINED_IDS[self.model_name])
         batch = dict(batch)  # do not modify the original batch dict
         batch["txt"] = debug_tokenizer.batch_decode(batch["input_ids"])
 
@@ -145,14 +102,6 @@ class BertForNLI(LightningModule):
             if isinstance(logger, WandbLogger):
                 logger: WandbLogger = logger
                 logger.log_text(f"{log_key}", dataframe=batch_df)
-
-    def training_epoch_end(self, outputs):
-        results_list = outputs
-        self._epoch_end("Train", results_list)
-
-    def validation_epoch_end(self, outputs):
-        for results_list in outputs:
-            self._epoch_end("Valid", results_list)
 
     def _epoch_end(self, split: str, results_list):
         dataset = results_list[0]["datapoint_dataset"][0].item()
@@ -210,6 +159,14 @@ class BertForNLI(LightningModule):
                 )
                 artifact.add_file(csv_path, "df.csv")
                 logger.experiment.log_artifact(artifact)
+
+    def training_epoch_end(self, outputs):
+        results_list = outputs
+        self._epoch_end("Train", results_list)
+
+    def validation_epoch_end(self, outputs):
+        for results_list in outputs:
+            self._epoch_end("Valid", results_list)
 
     def _log_mnli_epoch_end(self, prefix, dataset_str, results):
         handcrafted_types = results["datapoint_handcrafted_type"],
@@ -271,10 +228,229 @@ class BertForNLI(LightningModule):
                 self.log(f"Valid/Hans_loss/{label_description}_{heuristic_name}", loss, **log_kwargs)
                 self.log(f"Valid/Hans_acc/{label_description}_{heuristic_name}", acc, **log_kwargs)
 
+    @abstractmethod
+    def configure_optimizers(self):
+        pass
+
+
+class T5ForNLI(HuggingFaceTransformerForNLI):
+    """
+    A PyTorch Lightning module that is a wrapper around
+    a HuggingFace T5 for conditional generation model.
+    """
+
+    model_name = T5_IDENTIFIER
+
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.save_hyperparameters()
+        print("-" * 72)
+        print(f"self.hparams={self.hparams}")
+        print("-" * 72)
+
+        self.transformer: T5ForConditionalGeneration = T5ForConditionalGeneration.from_pretrained(
+            PRETRAINED_IDS[self.model_name])
+        print(self.transformer.config)
+
+        assert isinstance(self.transformer, T5ForConditionalGeneration)
+
+        # initialized in self.setup()
+        self.loss_criterion = FocalLoss(self.hparams.focal_loss_gamma)
+
+    def forward(self, input_ids, attention_mask, target_input_ids, target_attention_mask, **kwargs):
+        output = self.transformer.forward(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=target_input_ids,
+            decoder_attention_mask=target_attention_mask,
+            return_dict=True
+        )
+        return output
+
+    def _step(self, batch):
+        output = self.forward(**batch)
+        batch_size = batch['target_input_ids'].size(0)
+
+        loss = self.loss_criterion(output.logits.view(-1, output.logits.size(-1)), batch["target_input_ids"].view(-1))
+        loss = loss.resize(batch_size, T5_LABEL_PAD_LENGTH).mean(-1)
+
+        pred = torch.full((batch_size, ), -1)
+        prob = torch.full((batch_size, 3), -1)
+
+        pred_tmp = output.logits.argmax(dim=-1)
+        true_pred = (pred_tmp == batch['target_input_ids']).all(dim=1).float()
+        prob_tmp = output.logits.softmax(-1).detach().clone()
+        true_prob = prob_tmp.gather(-1, batch['target_input_ids'].unsqueeze(-1)).squeeze(-1).prod(-1)
+
+        prob = prob.prod(-1)
+
+        if "heuristic" in batch:  # HANS has the heuristic type, MNLI does not
+            heuristic = batch["heuristic"]
+        else:
+            heuristic = true_pred.new_ones(true_pred.shape) * -1.0
+
+        results = {
+            "loss": loss.mean(),
+            "acc": true_pred.mean(),
+            "count": float(len(pred)),
+            "datapoint_idx": batch["idx"],
+            "datapoint_dataset": batch["dataset"],
+            "datapoint_label": batch["labels"],
+            "datapoint_handcrafted_type": batch["handcrafted_type"],
+            "datapoint_heuristic": heuristic,
+            "datapoint_loss": loss.detach().clone(),
+            "datapoint_pred": pred,
+            "datapoint_true_pred": true_pred,
+            "datapoint_prob": prob,
+            "datapoint_true_prob": true_prob,
+        }
+        return results
+
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""
 
-        model = self.bert
+        model = self.transformer
+        no_decay = ["bias", "LayerNorm.weight"]
+        optimizer_grouped_parameters = [
+            {
+                "name": "1_w-decay",
+                "params": [
+                    p for n, p in model.named_parameters()
+                    if not any(nd in n for nd in no_decay)
+                ],
+                "weight_decay": self.hparams.weight_decay,
+            },
+            {
+                "name": "2_no-decay",
+                "params": [
+                    p for n, p in model.named_parameters()
+                    if any(nd in n for nd in no_decay)
+                ],
+                "weight_decay": 0.0,
+            },
+        ]
+        if self.hparams.optimizer_name == "adamw":
+            optimizer = AdamW(
+                optimizer_grouped_parameters,
+                lr=self.hparams.learning_rate,
+                weight_decay=self.hparams.weight_decay,
+                eps=self.hparams.adam_epsilon,
+            )
+        elif self.hparams.optimizer_name == "adam":
+            optimizer = Adam(
+                optimizer_grouped_parameters,
+                lr=self.hparams.learning_rate,
+                weight_decay=self.hparams.weight_decay,
+                eps=self.hparams.adam_epsilon,
+            )
+        else:
+            raise ValueError(f"Invalid optimizer_name given: {self.hparams.optimizer_name}")
+
+        train_steps = self.trainer.estimated_stepping_batches
+
+        if self.hparams.warmup_ratio is not None and self.hparams.warmup_steps is not None:
+            raise ValueError("Either warmup_steps or warmup_ratio should be given, but not both.")
+
+        if self.hparams.warmup_steps:
+            warmup_steps = self.hparams.warmup_steps
+        elif self.hparams.warmup_ratio:
+            warmup_steps = train_steps * self.hparams.warmup_ratio
+        else:
+            raise ValueError("Either warmup_steps or warmup_ratio should be given, but none were given.")
+
+        if self.hparams.scheduler_name == "linear":
+            scheduler = get_linear_schedule_with_warmup(
+                optimizer,
+                num_warmup_steps=warmup_steps,
+                num_training_steps=train_steps,
+            )
+            scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+        elif self.hparams.scheduler_name == "polynomial":
+            scheduler = get_polynomial_decay_schedule_with_warmup(
+                optimizer,
+                num_warmup_steps=warmup_steps,
+                num_training_steps=train_steps,
+                lr_end=0.0,
+            )
+            scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+        else:
+            raise ValueError(f"Invalid scheduler_name given: {self.hparams.optimizer_name}")
+
+        return [optimizer], [scheduler]
+
+
+class BertForNLI(HuggingFaceTransformerForNLI):
+    """
+    A PyTorch Lightning module that is a wrapper around
+    a HuggingFace BERT for sequence classification model.
+    """
+
+    model_name = BERT_IDENTIFIER
+
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.save_hyperparameters()
+        print("-" * 72)
+        print(f"self.hparams={self.hparams}")
+        print("-" * 72)
+
+        self.transformer: BertForSequenceClassification = AutoModelForSequenceClassification.from_pretrained(
+            PRETRAINED_IDS[self.model_name],
+            hidden_dropout_prob=self.hparams["hidden_dropout_prob"],
+            attention_probs_dropout_prob=self.hparams["attention_probs_dropout_prob"],
+            classifier_dropout=self.hparams["classifier_dropout"],
+            num_labels=3,
+        )
+        print(self.transformer.config)
+
+        assert isinstance(self.transformer, BertForSequenceClassification)
+
+        # initialized in self.setup()
+        self.loss_criterion = FocalLoss(self.hparams.focal_loss_gamma)
+
+    def forward(self, input_ids, attention_mask, token_type_ids, label=None, **kwargs) -> SequenceClassifierOutput:
+        output: SequenceClassifierOutput = self.transformer.forward(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids
+        )
+        return output
+
+    def _step(self, batch):
+        output = self.forward(**batch)
+
+        onehot_labels = F.one_hot(batch["labels"], num_classes=3).float()
+        loss = self.loss_criterion(output.logits, onehot_labels)
+        pred = output.logits.argmax(dim=-1)
+        true_pred = (pred == batch["labels"]).float()
+        prob = output.logits.softmax(-1).detach().clone()
+        true_prob = prob.gather(-1, batch["labels"].unsqueeze(-1)).squeeze(-1)
+        if "heuristic" in batch:  # HANS has the heuristic type, MNLI does not
+            heuristic = batch["heuristic"]
+        else:
+            heuristic = true_pred.new_ones(true_pred.shape) * -1.0
+
+        results = {
+            "loss": loss.mean(),
+            "acc": true_pred.mean(),
+            "count": float(len(pred)),
+            "datapoint_idx": batch["idx"],
+            "datapoint_dataset": batch["dataset"],
+            "datapoint_label": batch["labels"],
+            "datapoint_handcrafted_type": batch["handcrafted_type"],
+            "datapoint_heuristic": heuristic,
+            "datapoint_loss": loss.detach().clone(),
+            "datapoint_pred": pred,
+            "datapoint_true_pred": true_pred,
+            "datapoint_prob": prob,
+            "datapoint_true_prob": true_prob,
+        }
+        return results
+
+    def configure_optimizers(self):
+        """Prepare optimizer and schedule (linear warmup and decay)"""
+
+        model = self.transformer
         no_decay = ["bias", "LayerNorm.weight"]
         optimizer_grouped_parameters = [
             {

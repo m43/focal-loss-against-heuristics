@@ -12,7 +12,7 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy
 
 from src.dataset.datamodule import ExperimentDataModule
-from src.model.nlitransformer import BertForNLI
+from src.model.nlitransformer import BertForNLI, T5ForNLI
 from src.utils.util import nice_print, HORSE, get_logger
 
 log = get_logger(__name__)
@@ -34,6 +34,7 @@ def get_parser_main_model():
     parser.add_argument('--experiment_version', type=str, default=None)
 
     # experiment configuration
+    parser.add_argument('--model_name', type=str, default='BERT', help='name of the model (BERT or T5)')
     parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs')
     parser.add_argument('--num_workers', type=int, default=20, help='number of dataloader workers')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size')
@@ -76,6 +77,7 @@ def main(config):
 
     # 1. Prepare datamodule
     dm = ExperimentDataModule(
+        model_name=config.model_name,
         batch_size=config.batch_size,
         num_hans_train_examples=config.num_hans_train_examples,
         num_workers=config.num_workers,
@@ -102,20 +104,36 @@ def main(config):
     log.info(config)
 
     # 3. Prepare model
-    nlitransformer = BertForNLI(
-        hidden_dropout_prob=config.bert_hidden_dropout_prob,
-        attention_probs_dropout_prob=config.bert_attention_probs_dropout_prob,
-        classifier_dropout=config.bert_classifier_dropout,
-        focal_loss_gamma=config.focal_loss_gamma,
-        learning_rate=config.lr,
-        batch_size=config.batch_size,
-        weight_decay=config.weight_decay,
-        adam_epsilon=config.adam_epsilon,
-        warmup_steps=config.warmup_steps,
-        warmup_ratio=config.warmup_ratio,
-        scheduler_name=config.scheduler_name,
-        optimizer_name=config.optimizer_name,
-    )
+    if config.model_name == 'BERT':
+        nlitransformer = BertForNLI(
+            hidden_dropout_prob=config.bert_hidden_dropout_prob,
+            attention_probs_dropout_prob=config.bert_attention_probs_dropout_prob,
+            classifier_dropout=config.bert_classifier_dropout,
+            focal_loss_gamma=config.focal_loss_gamma,
+            learning_rate=config.lr,
+            batch_size=config.batch_size,
+            weight_decay=config.weight_decay,
+            adam_epsilon=config.adam_epsilon,
+            warmup_steps=config.warmup_steps,
+            warmup_ratio=config.warmup_ratio,
+            scheduler_name=config.scheduler_name,
+            optimizer_name=config.optimizer_name,
+        )
+    elif config.model_name == 'T5':
+        nlitransformer = T5ForNLI(
+            focal_loss_gamma=config.focal_loss_gamma,
+            learning_rate=config.lr,
+            batch_size=config.batch_size,
+            weight_decay=config.weight_decay,
+            adam_epsilon=config.adam_epsilon,
+            warmup_steps=config.warmup_steps,
+            warmup_ratio=config.warmup_ratio,
+            scheduler_name=config.scheduler_name,
+            optimizer_name=config.optimizer_name,
+        )
+    else:
+        raise ValueError(f"Model value must be 'BERT' or 'T5', '{config.model_name}' not recognized!")
+
     wandb_logger.watch(nlitransformer, log="all")
 
     # 4. Prepare callbacks
