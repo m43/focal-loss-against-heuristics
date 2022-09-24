@@ -80,13 +80,36 @@ class BertForNLI(LightningModule):
     def _step(self, batch):
         output = self.forward(**batch)
 
+        # Compute loss
         onehot_labels = F.one_hot(batch["labels"], num_classes=3).float()
         loss = self.loss_criterion(output.logits, onehot_labels)
-        pred = output.logits.argmax(dim=-1)
-        true_pred = (pred == batch["labels"]).float()
+
+        # Compute prediction probability
+        #  - prob: probability for individual classes
+        #  - true_prob: probability for the correct class
         prob = output.logits.softmax(-1).detach().clone()
+        # **********************************************************************
+        # HANS labels: entailment=0, non-entailment=1
+        # MNLI, SNLI labels: entailment=0, neutral=1, contradiction=2
+        # We map neutral+contradiction to non-entailment, as done in literature:
+        #   McCoy et al.: https://arxiv.org/abs/1902.01007
+        #   Clark et al.: https://aclanthology.org/D19-1418/
+        dataset = batch["dataset"][0].item()
+        if dataset in HANS_DATASET_INTEGER_IDENTIFIERS:
+            # pred = output.logits.argmax(dim=-1)
+            prob[:, 1] += prob[:, 2]
+            prob = prob[:, :2]
+        # **********************************************************************
         true_prob = prob.gather(-1, batch["labels"].unsqueeze(-1)).squeeze(-1)
-        if "heuristic" in batch:  # HANS has the heuristic type, MNLI does not
+
+        # Compute the prediction
+        #  - pred: what class do we predict (e.g. entailment=0)
+        #  - true_pred: did we predict the correct class (no=0, yes=1)
+        pred = prob.argmax(dim=-1)
+        true_pred = (pred == batch["labels"]).float()
+
+        # Extract the heuristic type. Only HANS has the heuristic type (e.g. lexical_overlap), for others we put -1
+        if "heuristic" in batch:
             heuristic = batch["heuristic"]
         else:
             heuristic = true_pred.new_ones(true_pred.shape) * -1.0
