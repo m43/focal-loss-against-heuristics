@@ -14,8 +14,28 @@ from src.utils.util import get_logger
 log = get_logger(__name__)
 
 
+class HandcraftedTypeSingleton(object):
+    def __new__(cls):
+        if not hasattr(cls, 'instance'):
+            cls.instance = super(HandcraftedTypeSingleton, cls).__new__(cls)
+            cls.instance.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained("bert-base-uncased")
+        return cls.instance
+
+    def compute_handcrafted_type(self, sample):
+        handcrafted_type = HandcraftedType.STANDARD
+        if sample['premise'] == sample['hypothesis']:
+            handcrafted_type = HandcraftedType.TRIVIAL if sample['label'] == 0 else HandcraftedType.NOISE
+        else:
+            tokenized_premise = self.tokenizer(sample['premise'], add_special_tokens=False)['input_ids']
+            tokenized_hypothesis = self.tokenizer(sample['hypothesis'], add_special_tokens=False)['input_ids']
+            if all(token in tokenized_premise for token in tokenized_hypothesis):
+                handcrafted_type = HandcraftedType.HEURISTIC_E if sample['label'] == 0 else HandcraftedType.HEURISTIC_NE
+
+        return handcrafted_type.value
+
+
 @DATAMODULE_REGISTRY
-class ExperimentDataModule(pl.LightningDataModule):
+class MNLIWithHANSDatamodule(pl.LightningDataModule):
     """
     PyTorch Lightning datamodule to load and preprocess the MultiNLI and HANS datasets.
     """
@@ -54,19 +74,9 @@ class ExperimentDataModule(pl.LightningDataModule):
 
     @staticmethod
     def _process_mnli(sample, tokenizer):
-        handcrafted_type = HandcraftedType.STANDARD
-        if sample['premise'] == sample['hypothesis']:
-            handcrafted_type = HandcraftedType.TRIVIAL if sample['label'] == 0 else HandcraftedType.NOISE
-        else:
-            tokenized_premise = tokenizer(sample['premise'], add_special_tokens=False)['input_ids']
-            tokenized_hypothesis = tokenizer(sample['hypothesis'], add_special_tokens=False)['input_ids']
-            if all(token in tokenized_premise for token in tokenized_hypothesis):
-                handcrafted_type = HandcraftedType.HEURISTIC_E if sample['label'] == 0 else HandcraftedType.HEURISTIC_NE
-
-        new_attributes = {'handcrafted_type': handcrafted_type.value}
-        new_attributes.update(tokenizer(sample['premise'], sample['hypothesis']))
-
-        return new_attributes
+        res = tokenizer(sample['premise'], sample['hypothesis'])
+        res['handcrafted_type'] = HandcraftedTypeSingleton().compute_handcrafted_type(sample)
+        return res
 
     def _setup_mnli(self):
         self.mnli_dataset = load_dataset("multi_nli").map(
