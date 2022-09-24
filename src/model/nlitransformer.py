@@ -138,17 +138,14 @@ class BertForNLI(LightningModule):
         if batch_idx == 0 or batch_idx == -1 and self.global_rank == 0 and self.current_epoch in [0, 1]:
             self._log_batch_for_debugging(f"{prefix}/Batch/batch-{batch_idx}_dataloader-{dataloader_idx}", batch)
 
-        if dataset in MNLI_DATASET_INTEGER_IDENTIFIERS:
+        if dataset in MNLI_DATASET_INTEGER_IDENTIFIERS or SNLI_DATASET_INTEGER_IDENTIFIERS:
             log_kwargs = {
-                'on_step': True,
-                'on_epoch': True,
                 'prog_bar': True,
-                'logger': True,
                 'add_dataloader_idx': False,
             }
-            self.log(f"{prefix}/{dataset_str}_loss", results["loss"], **log_kwargs)
-            self.log(f"{prefix}/{dataset_str}_acc", results["acc"], **log_kwargs)
-            self.log(f"{prefix}/{dataset_str}_datapoint_count", results["count"], reduce_fx="sum", **log_kwargs)
+            self.log(f"{prefix}/{dataset_str}/loss", results["loss"], **log_kwargs)
+            self.log(f"{prefix}/{dataset_str}/acc", results["acc"], **log_kwargs)
+            self.log(f"{prefix}/{dataset_str}/datapoint_count", results["count"], **log_kwargs)
 
     def _log_batch_for_debugging(self, log_key, batch):
         def jsonify(value):
@@ -194,6 +191,7 @@ class BertForNLI(LightningModule):
 
         # Add additional information to the results
         n = len(results["datapoint_idx"])
+        assert n == len(results["datapoint_loss"]) == len(results["datapoint_true_pred"])
         results["epoch"] = np.repeat(self.current_epoch, n)
         results["step"] = np.repeat(self.global_step, n)
         results["datapoint_heuristics_str"] = np.array([
@@ -205,8 +203,21 @@ class BertForNLI(LightningModule):
             for t in results["datapoint_handcrafted_type"]
         ])
 
+        # Add selected logs to logger with self.log (otherwise, all logs saved in the dataframe)
+        loss = results["datapoint_loss"].mean(dtype=np.float64)
+        acc = results["datapoint_true_pred"].mean(dtype=np.float64)
+        assert acc == (results["datapoint_pred"] == results["datapoint_label"]).mean()
+
+        log_kwargs = {
+            'prog_bar': True,
+            'add_dataloader_idx': False,
+        }
+        self.log(f"{split}/{dataset_str}/loss", loss, **log_kwargs)
+        self.log(f"{split}/{dataset_str}/acc", acc, **log_kwargs)
+        self.log(f"{split}/{dataset_str}/count", float(n), **log_kwargs)
+
         # Additional logs per dataset
-        if dataset in MNLI_DATASET_INTEGER_IDENTIFIERS:
+        if dataset in MNLI_DATASET_INTEGER_IDENTIFIERS or SNLI_DATASET_INTEGER_IDENTIFIERS:
             self._log_mnli_epoch_end(split, dataset_str, results)
         if dataset in HANS_DATASET_INTEGER_IDENTIFIERS:
             self._log_hans_epoch_end(split, dataset_str, results)
@@ -255,25 +266,10 @@ class BertForNLI(LightningModule):
             self.log(f"{prefix}/HandcraftedType/{dataset_str}_{handcrafted_type.name.lower()}_accuracy", acc_per_type,
                      **log_kwargs)
 
-    def _log_hans_epoch_end(self, split, dataset_str, results):
-        n = len(results["datapoint_idx"])
-        loss = results["datapoint_loss"].mean()
-        acc = results["datapoint_true_pred"].sum() / len(results["datapoint_pred"])
-
-        # Sanity check
-        acc2 = (results["datapoint_pred"] == results["datapoint_label"]).sum() / len(results["datapoint_pred"])
-        assert acc == acc2
-
+    def _log_hans_epoch_end(self, prefix, dataset_str, results):
         log_kwargs = {
-            'on_step': False,
-            'on_epoch': True,
-            'prog_bar': True,
-            'logger': True,
             'add_dataloader_idx': False,
         }
-        self.log(f"{split}/{dataset_str}_loss", loss, **log_kwargs)
-        self.log(f"{split}/{dataset_str}_acc", acc, **log_kwargs)
-        self.log(f"{split}/{dataset_str}_count", float(n), **log_kwargs)
 
         heuristics = results["datapoint_heuristic"]
         labels = results["datapoint_label"]
@@ -291,8 +287,8 @@ class BertForNLI(LightningModule):
 
                 loss = losses[mask].mean()
                 acc = (preds[mask] == labels[mask]).mean()
-                self.log(f"Valid/Hans_loss/{label_description}_{heuristic_name}", loss, **log_kwargs)
-                self.log(f"Valid/Hans_acc/{label_description}_{heuristic_name}", acc, **log_kwargs)
+                self.log(f"{prefix}/Hans_loss/{label_description}__{heuristic_name}", loss, **log_kwargs)
+                self.log(f"{prefix}/Hans_acc/{label_description}__{heuristic_name}", acc, **log_kwargs)
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""

@@ -17,7 +17,7 @@ There is no such thing as a perfect dataset. Sometimes there are underlying heur
 
 ## Environment set-up
 
-This codebase has been tested with the packages and versions specified in `conda.yml` and Python 3.9.
+This codebase has been tested with the packages and versions specified in `conda.yml` and Python 3.9 on Manjaro Linux and Red Hat Enterprise Linux Server 7.7 (Maipo).
 
 Start by cloning the repository:
 ```bash

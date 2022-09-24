@@ -9,9 +9,9 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, CSVLogger
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DDPStrategy
 
-from src.dataset.datamodule import ExperimentDataModule
+from src.dataset.mnli_datamodule import MNLIWithHANSDatamodule
+from src.dataset.snli_datamodule import SNLIDatamodule
 from src.model.nlitransformer import BertForNLI
 from src.utils.util import nice_print, HORSE, get_logger
 
@@ -32,15 +32,21 @@ def get_parser_main_model():
     parser.add_argument('--experiment_name', type=str, default='bertfornli-exp1')
     parser.add_argument('--checkpoint_path', type=str, default=None, help="Checkpoint used to restore training state")
     parser.add_argument('--experiment_version', type=str, default=None)
+    parser.add_argument('--wandb_entity', type=str, default="epfl-optml")
 
     # experiment configuration
+    parser.add_argument('--seed', type=int, default=72, help='reproducibility seed')
     parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs')
     parser.add_argument('--num_workers', type=int, default=20, help='number of dataloader workers')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size')
     parser.add_argument('--gpus', type=int, default=-1)
     parser.add_argument('--precision', type=int, default=16)
     parser.add_argument('--early_stopping_patience', type=int, default=50)
-    parser.add_argument('--accumulate_grad_batches', type=int, default=4)
+    parser.add_argument('--accumulate_grad_batches', type=int, default=1)
+
+    # dataset
+    parser.add_argument('--dataset', type=str, default="mnli", choices=["mnli", "snli"],
+                        help='Which dataset to run with.')
     parser.add_argument('--num_hans_train_examples', type=int, default=0, help='number of HANS train examples')
 
     # model hparams
@@ -60,7 +66,8 @@ def get_parser_main_model():
     parser.add_argument('--warmup_ratio', type=float, default=None, help='ratio of warmup over all epochs')
     parser.add_argument('--adam_epsilon', type=float, default=1e-8, help='Adam epsilon')
     parser.add_argument('--gradient_clip_val', type=float, default=None, help='gradient clipping value')
-    parser.add_argument('--tokenizer_model_max_length', type=int, default=512, help='number of warmup steps')
+    parser.add_argument('--tokenizer_model_max_length', type=int, default=512,
+                        help='The maximum length (in number of tokens) for the inputs to the transformer model.')
 
     return parser
 
@@ -68,19 +75,30 @@ def get_parser_main_model():
 def main(config):
     """
     Configure and run the training and evaluation of the `model.nlitrasformer.BertForNLI` model.
-
     :param config: The run configuration.
     """
     # 0. Ensure reproducibility of results
-    pl.seed_everything(72, workers=True)
+    pl.seed_everything(config.seed, workers=True)
 
     # 1. Prepare datamodule
-    dm = ExperimentDataModule(
-        batch_size=config.batch_size,
-        num_hans_train_examples=config.num_hans_train_examples,
-        num_workers=config.num_workers,
-        tokenizer_model_max_length=config.tokenizer_model_max_length,
-    )
+    if args.dataset == "mnli":
+        early_stopping_metric = "Valid/mnli_validation_matched/loss"
+        dm = MNLIWithHANSDatamodule(
+            batch_size=config.batch_size,
+            num_hans_train_examples=config.num_hans_train_examples,
+            num_workers=config.num_workers,
+            tokenizer_model_max_length=config.tokenizer_model_max_length,
+        )
+    elif args.dataset == "snli":
+        assert config.num_hans_train_examples == 0, "SNLI with HANS not supported"
+        early_stopping_metric = "Valid/snli_validation/loss"
+        dm = SNLIDatamodule(
+            batch_size=config.batch_size,
+            num_workers=config.num_workers,
+            tokenizer_model_max_length=config.tokenizer_model_max_length,
+        )
+    else:
+        raise ValueError(f"Dataset `{args.dataset}` not supported")
 
     # 2. Prepare loggers
     if config.experiment_version is None:
@@ -92,6 +110,7 @@ def main(config):
     config.experiment_version += f"_{datetime.now().strftime('%m.%d_%H.%M.%S')}"
 
     wandb_logger = WandbLogger(
+        entity=config.wandb_entity,
         project=config.experiment_name,
         version=config.experiment_version.replace("=", "-"),
         settings=wandb.Settings(start_method='fork'),
@@ -119,7 +138,6 @@ def main(config):
     wandb_logger.watch(nlitransformer, log="all")
 
     # 4. Prepare callbacks
-    early_stopping_metric = "Valid/mnli_validation_matched_loss_epoch"
     early_stopping_callback = EarlyStopping(
         monitor=early_stopping_metric, mode="min",
         patience=config.early_stopping_patience,
@@ -144,8 +162,9 @@ def main(config):
             gpus=config.gpus,
             precision=config.precision,
             accelerator="gpu",
-            # strategy="dp",
-            strategy=DDPStrategy(process_group_backend="gloo"),
+            # TODO Multi GPU setup with DP is slower than Single GPU (50 min / epoch vs 30 min / epoch).
+            strategy="dp",
+            # strategy=DDPStrategy(process_group_backend="gloo"),
             accumulate_grad_batches=config.accumulate_grad_batches,
             val_check_interval=1 / 3,
             num_sanity_val_steps=0,
@@ -161,8 +180,9 @@ def main(config):
             default_root_dir="logs",
             logger=loggers,
             callbacks=callbacks,
-            # limit_train_batches=5,
-            # limit_val_batches=5,
+            # ~~~ Uncomment for fast debugging ~~~ #
+            # limit_train_batches=10,
+            # limit_val_batches=10,
         )
     trainer.fit(nlitransformer, dm, ckpt_path=config.checkpoint_path)
 
