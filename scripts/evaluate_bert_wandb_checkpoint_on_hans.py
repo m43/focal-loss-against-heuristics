@@ -1,3 +1,9 @@
+"""
+Script that evaluates takes a BERT checkpoint from WANDB and evaluates it on HANS.
+The HANS dataset is loaded by hand (i.e., without using 🤗HuggingFace datasets).
+
+Run for example like: `python -m scripts.evaluate_bert_wandb_checkpoint_on_hans`
+"""
 import os.path
 import os.path
 
@@ -147,7 +153,7 @@ def evaluate_bert_on_hans(bert, batch_size=256):
     # from google.colab import files
     # files.download(out_file)
 
-    return correct / total
+    return (correct / total).item()
 
 
 def evaluate_runpath_on_hans(run_path, device="cuda"):
@@ -159,6 +165,7 @@ def evaluate_runpath_on_hans(run_path, device="cuda"):
             ckpt_file.download("./")
 
     best, last = (f.name for f in ckpt_files)
+    assert "last" in last
     print(f"best --> {best}")
     print(f"last --> {last}")
     bert_best = load_bert_from_checkpoint(best, device).to(device)
@@ -171,61 +178,99 @@ def evaluate_runpath_on_hans(run_path, device="cuda"):
     print(f"Best: {best_acc * 100:.4f}")
     print(f"Last: {last_acc * 100:.4f}")
 
+    return {"best_acc": best_acc, "last_acc": last_acc}
+
 
 run_path = "user72/bertfornli-test/S7.03_gamma-0.0_adamw-1e-06_lr-2e-05_e-10_precision-16_08.28_17.55.48"
 
-evaluate_runpath_on_hans(run_path)
+# evaluate_runpath_on_hans(run_path)
+#
+# ### S1 and S2 TURNED AROUND
+# ## With bug (+ HANS labels flipped)
+# # Best: 52.1000
+# # Last: 46.9933
+#
+# ## With bug:
+# # Best: 47.4867
+# # Last: 44.9233
+#
+# ## Without bug:
+# # Best: 47.7567
+# # Last: 52.3100
+#
+# ### S1 and S2 in correct order
+# ## With bug:
+# # Best: 49.8800
+# # Last: 52.7867
+#
+# ## Without bug:
+# # Best: 52.5100
+# # Last: 65.4967
+#
+# run_path = "user72/bertfornli-exp1/S10.02_gamma-10.0_adamw-1e-06_bs-1x32_lr-2e-05_wd-0.01_e-10_prec-16_08.29_00.07.17"
+#
+# evaluate_runpath_on_hans(run_path)
+#
+# ### S1 and S2 TURNED AROUND
+# ## With bug
+# # Best: 47.8200
+# # Last: 47.0633
+#
+# ## Without bug
+# # Best: 49.8800
+# # Last: 48.1533
+#
+# ### S1 and S2 in correct order
+# ## With bug:
+# # Best: 49.9833
+# # Last: 49.3567
+#
+# ## Without bug:
+# # Best: 54.5367
+# # Last: 57.3133
+#
+# run_path = "epfl-optml/bertfornli-exp1/e-03__bs-32_09.24_02.01.13"
+# evaluate_runpath_on_hans(run_path, device="cuda")
+# # Best: 56.3900
+# # Last: 60.1733
+#
+# run_path = "epfl-optml/bertfornli-exp1/e-03__bs-08_09.24_03.22.44"
+# evaluate_runpath_on_hans(run_path, device="cuda")
+# # Best: 54.6933
+# # Last: 60.1733
 
-### S1 and S2 TURNED AROUND
-## With bug (+ HANS labels flipped)
-# Best: 52.1000
-# Last: 46.9933
 
-## With bug:
-# Best: 47.4867
-# Last: 44.9233
+run_paths = [
+    "epfl-optml/nli/S1.01.A_e-03_model-bert_dataset-mnli_gamma-0.0_seed-72_09.25_01.53.02",
+    "epfl-optml/nli/S1.01.B_e-04__model-bert_dataset-mnli_gamma-0.0_seed-24_09.25_01.53.02",
+    "epfl-optml/nli/S1.01.C_e-10__model-bert_dataset-mnli_gamma-0.0_seed-24_09.25_01.53.02",
+    "epfl-optml/nli/S1.01.C_e-10__model-bert_dataset-mnli_gamma-0.0_seed-72_09.25_01.53.02",
+    "epfl-optml/nli/S1.01.D_e-3_p-32__model-bert_dataset-mnli_gamma-0.0_seed-24_09.25_01.53.02",
+    "epfl-optml/nli/S1.01.E_eps-8_model-bert_dataset-mnli_gamma-0.0_seed-24_09.25_01.53.02",
+    "epfl-optml/nli/S1.01.F_mahabadi_eps8-bs8-wmp0-wd0-p32__model-bert_dataset-mnli_gamma-0.0_seed-24_09.25_01.53.02",
+    "epfl-optml/nli/S1.01.G_clark_lr-5e-5__model-bert_dataset-mnli_gamma-0.0_seed-24_09.25_01.53.02",
+    "epfl-optml/nli/S1.02_model-bert_dataset-mnli_gamma-0.5_seed-72_09.25_01.53.02",
+    "epfl-optml/nli/S1.03_model-bert_dataset-mnli_gamma-1.0_seed-72_09.25_01.53.02",
+    "epfl-optml/nli/S1.04_model-bert_dataset-mnli_gamma-2.0_seed-72_09.25_01.53.04",
+    "epfl-optml/nli/S1.05_model-bert_dataset-mnli_gamma-5.0_seed-72_09.25_01.53.12",
+    "epfl-optml/nli/S1.06_model-bert_dataset-mnli_gamma-10.0_seed-72_09.25_01.53.12",
+    "epfl-optml/nli/S1.07_model-bert_dataset-snli_gamma-0.0_seed-72_09.25_01.53.12",
+    "epfl-optml/nli/S1.08_model-bert_dataset-snli_gamma-0.5_seed-72_09.25_01.53.32",
+    "epfl-optml/nli/S1.09_model-bert_dataset-snli_gamma-1.0_seed-72_09.25_02.57.08",
+    "epfl-optml/nli/S1.10_model-bert_dataset-snli_gamma-2.0_seed-72_09.25_02.57.08",
+    "epfl-optml/nli/S1.11_model-bert_dataset-snli_gamma-5.0_seed-72_09.25_03.02.37",
+    "epfl-optml/nli/S1.12_model-bert_dataset-snli_gamma-10.0_seed-72_09.25_03.16.14",
+]
+results = {}
+for run_path in run_paths:
+    print(f"*" * 72)
+    print(f"run_path={run_path}")
+    print(f"*" * 72)
+    results[run_path] = evaluate_runpath_on_hans(run_path, device="cuda")
 
-## Without bug:
-# Best: 47.7567
-# Last: 52.3100
+print(results)
+print()
 
-### S1 and S2 in correct order
-## With bug:
-# Best: 49.8800
-# Last: 52.7867
-
-## Without bug:
-# Best: 52.5100
-# Last: 65.4967
-
-run_path = "user72/bertfornli-exp1/S10.02_gamma-10.0_adamw-1e-06_bs-1x32_lr-2e-05_wd-0.01_e-10_prec-16_08.29_00.07.17"
-
-evaluate_runpath_on_hans(run_path)
-
-### S1 and S2 TURNED AROUND
-## With bug
-# Best: 47.8200
-# Last: 47.0633
-
-## Without bug
-# Best: 49.8800
-# Last: 48.1533
-
-### S1 and S2 in correct order
-## With bug:
-# Best: 49.9833
-# Last: 49.3567
-
-## Without bug:
-# Best: 54.5367
-# Last: 57.3133
-
-run_path = "epfl-optml/bertfornli-exp1/e-03__bs-32_09.24_02.01.13"
-evaluate_runpath_on_hans(run_path, device="cuda")
-# Best: 56.3900
-# Last: 60.1733
-
-run_path = "epfl-optml/bertfornli-exp1/e-03__bs-08_09.24_03.22.44"
-evaluate_runpath_on_hans(run_path, device="cuda")
-# Best: 54.6933
-# Last: 60.1733
+print("run_path,best_acc,last_acc")
+for run_path, x in results.items():
+    print(f"{run_path},{x['best_acc']},{x['last_acc']}")
