@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, PreTrainedTokenizerBase, DataCollatorWithPadding
 
 from src.constants import *
-from src.dataset.mnli_datamodule import HandcraftedTypeSingleton
+from src.dataset.util import HandcraftedTypeSingleton, HANSUtils
 from src.model.nlitransformer import PRETRAINED_MODEL_ID
 from src.utils.util import get_logger
 
@@ -79,9 +79,13 @@ class SNLIDatamodule(pl.LightningDataModule):
         log.info(f"   len(self.snli_dataset['validation'])={len(self.snli_dataset['validation'])}")
         log.info(f"   len(self.snli_dataset['test'])={len(self.snli_dataset['test'])}")
 
+    def _setup_hans(self):
+        self.hans_dataset_validation = HANSUtils.setup_hans(self.batch_size, self.tokenizer)
+
     def setup(self, stage: Optional[str] = None):
         self.tokenizer = self.load_tokenizer(self.tokenizer_str, self.tokenizer_model_max_length)
         self._setup_snli()
+        self._setup_hans()
         self.collator = DataCollatorWithPadding(self.tokenizer, padding='longest', return_tensors="pt")
         self.collator_fn = lambda x: self.collator(x).data
 
@@ -98,7 +102,10 @@ class SNLIDatamodule(pl.LightningDataModule):
         snli_test = DataLoader(self.snli_dataset['test'],
                                batch_size=self.batch_size,
                                collate_fn=self.collator_fn)
-        return [snli_validation, snli_test]
+        hans_validation = DataLoader(self.hans_dataset_validation,
+                                     batch_size=self.batch_size,
+                                     collate_fn=self.collator_fn)
+        return [snli_validation, snli_test, hans_validation]
 
     def teardown(self, stage: Optional[str] = None):
         pass
