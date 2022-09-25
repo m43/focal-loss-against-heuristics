@@ -9,21 +9,22 @@
 This file contains the definition of encoders used in https://arxiv.org/pdf/1705.02364.pdf
 """
 
-import time
 import sys
+import time
+
 sys.path.append("../")
 
 import numpy as np
 import torch
 import torch.nn as nn
 from mutils import grad_mul_const
-from src.infersent.src.losses import FocalLoss, POELoss, RUBILoss
+from losses import FocalLoss, POELoss, RUBILoss
 from torch.nn import CrossEntropyLoss
-
 
 """
 BLSTM (max/mean) encoder
 """
+
 
 class InferSent(nn.Module):
 
@@ -93,9 +94,9 @@ class InferSent(nn.Module):
                 assert emb.ndimension() == 2
 
         if return_all_emb:
-            all_emb = sent_output.permute(1, 0, 2) 
+            all_emb = sent_output.permute(1, 0, 2)
             return emb, all_emb
-        else: 
+        else:
             return emb
 
     def set_w2v_path(self, w2v_path):
@@ -172,7 +173,7 @@ class InferSent(nn.Module):
             self.word_vec.update(new_word_vec)
         else:
             new_word_vec = []
-        print('New vocab size : %s (added %s words)'% (len(self.word_vec), len(new_word_vec)))
+        print('New vocab size : %s (added %s words)' % (len(self.word_vec), len(new_word_vec)))
 
     def get_batch(self, batch):
         # sent in batch in decreasing order of lengths
@@ -213,7 +214,7 @@ class InferSent(nn.Module):
         n_wk = np.sum(lengths)
         if verbose:
             print('Nb words kept : %s/%s (%.1f%s)' % (
-                        n_wk, n_w, 100.0 * n_wk / n_w, '%'))
+                n_wk, n_w, 100.0 * n_wk / n_w, '%'))
 
         # sort by decreasing length
         lengths, idx_sort = np.sort(lengths)[::-1], np.argsort(-lengths)
@@ -224,7 +225,7 @@ class InferSent(nn.Module):
     def encode(self, sentences, bsize=64, tokenize=True, verbose=False):
         tic = time.time()
         sentences, lengths, idx_sort = self.prepare_samples(
-                        sentences, bsize, tokenize, verbose)
+            sentences, bsize, tokenize, verbose)
 
         embeddings = []
         for stidx in range(0, len(sentences), bsize):
@@ -242,8 +243,8 @@ class InferSent(nn.Module):
 
         if verbose:
             print('Speed : %.1f sentences/s (%s mode, bsize=%s)' % (
-                    len(embeddings)/(time.time()-tic),
-                    'gpu' if self.is_cuda() else 'cpu', bsize))
+                len(embeddings) / (time.time() - tic),
+                'gpu' if self.is_cuda() else 'cpu', bsize))
         return embeddings
 
     def visualize(self, sent, tokenize=True):
@@ -278,10 +279,11 @@ class InferSent(nn.Module):
         return output, idxs
 
 
-
 """
 Main module for Natural Language Inference
 """
+
+
 class NLINet(nn.Module):
     def __init__(self, config):
         super(NLINet, self).__init__()
@@ -294,7 +296,7 @@ class NLINet(nn.Module):
         self.encoder_type = config['encoder_type']
         self.dpout_fc = config['dpout_fc']
         self.encoder = eval(self.encoder_type)(config)
-        self.inputdim = 4*2*self.enc_lstm_dim
+        self.inputdim = 4 * 2 * self.enc_lstm_dim
 
         if self.nonlinear_fc:
             self.classifier = nn.Sequential(
@@ -306,19 +308,19 @@ class NLINet(nn.Module):
                 nn.Tanh(),
                 nn.Dropout(p=self.dpout_fc),
                 nn.Linear(self.fc_dim, self.n_classes),
-                )
+            )
         else:
             self.classifier = nn.Sequential(
                 nn.Linear(self.inputdim, self.fc_dim),
                 nn.Linear(self.fc_dim, self.fc_dim),
                 nn.Linear(self.fc_dim, self.n_classes)
-                )
+            )
 
     def forward(self, s1, s2):
         # s1 : (s1, s1_len)
         u = self.encoder(s1)
         v = self.encoder(s2)
-        features = torch.cat((u, v, torch.abs(u-v), u*v), 1)
+        features = torch.cat((u, v, torch.abs(u - v), u * v), 1)
         output = self.classifier(features)
         return output
 
@@ -327,13 +329,14 @@ class NLINet(nn.Module):
         return emb
 
 
-
-
 """
 Main module for Debiasing.
 """
+
+
 class DebiasNet(nn.Module):
     """ This module wrap the NLI model and applied the debiasing technique to it."""
+
     def __init__(self, config):
         super(DebiasNet, self).__init__()
         # Loss options.
@@ -344,20 +347,21 @@ class DebiasNet(nn.Module):
         self.gamma_focal = config['gamma_focal']
         self.poe_alpha = config['poe_alpha'] if 'poe_alpha' in config else 1.0
         if self.focal_loss:
-           self.loss_fct = FocalLoss(gamma=self.gamma_focal)
+            self.loss_fct = FocalLoss(gamma=self.gamma_focal)
         elif self.poe_loss:
-           self.loss_fct = POELoss(poe_alpha=self.poe_alpha)
+            self.loss_fct = POELoss(poe_alpha=self.poe_alpha)
         elif self.rubi:
-           self.loss_fct = RUBILoss(num_labels=self.n_classes)
+            self.loss_fct = RUBILoss(num_labels=self.n_classes)
         else:
-           self.loss_fct = CrossEntropyLoss()
+            self.loss_fct = CrossEntropyLoss()
 
-        self.ensemble = self.rubi or self.focal_loss or self.poe_loss 
+        # The 'ensemble' variable defines if debiasing is used or not, and thus , for our purposes, we disable
+        # debiasing by removing focal loss from the logic term, and use focal loss without debiasing.
+        self.ensemble = self.rubi or self.poe_loss  # or self.focal_loss
         self.loss_fct_h = CrossEntropyLoss()
         self.h_loss_weight = config['h_loss_weight']
 
-
-        self.nli_model = config['nli_net'] 
+        self.nli_model = config['nli_net']
 
         # Let figure out the dimension of the classifier here.
         self.fc_dim = config['fc_dim']
@@ -368,7 +372,7 @@ class DebiasNet(nn.Module):
         self.nonlinear_fc = config['nonlinear_fc']
 
         if self.ensemble:
-            self.nonlinear_h_classifier = config['nonlinear_h_classifier'] 
+            self.nonlinear_h_classifier = config['nonlinear_h_classifier']
             self.c1 = self.get_classifier(self.nonlinear_h_classifier)
 
     def get_classifier(self, nonlinear_fc):
@@ -400,18 +404,18 @@ class DebiasNet(nn.Module):
     def forward(self, s1, s2, labels):
         nli_output = self.nli_model(s1, s2)
 
-        h_pred = None 
+        h_pred = None
         if self.ensemble:
             # gets the embedding for the hypotheses.
             h_embeddings = self.nli_model.encoder(s2)
-            h_embeddings = grad_mul_const(h_embeddings, 0.0) # do not backpropagate through the hypothesis encoder.
+            h_embeddings = grad_mul_const(h_embeddings, 0.0)  # do not backpropagate through the hypothesis encoder.
             h_pred = self.c1(h_embeddings)
             total_loss = self.get_loss(nli_output, h_pred, labels)
         else:
             total_loss = self.loss_fct(nli_output, labels)
 
         outputs = {}
-        outputs['total_loss'] = total_loss 
+        outputs['total_loss'] = total_loss
         outputs['nli'] = nli_output
         outputs['h'] = h_pred
         return outputs

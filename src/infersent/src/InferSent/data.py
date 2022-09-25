@@ -5,7 +5,9 @@
 # LICENSE file in the root directory of this source tree.
 
 import os
+
 import numpy as np
+import pandas as pd
 import torch
 
 
@@ -38,13 +40,13 @@ def get_word_dict(sentences):
 def get_glove(word_dict, glove_path):
     # create word_vec with glove vectors
     word_vec = {}
-    with open(glove_path) as f:
+    with open(glove_path, encoding='utf-8') as f:
         for line in f:
             word, vec = line.split(' ', 1)
             if word in word_dict:
                 word_vec[word] = np.array(list(map(float, vec.split())))
     print('Found {0}(/{1}) words with glove vectors'.format(
-                len(word_vec), len(word_dict)))
+        len(word_vec), len(word_dict)))
     return word_vec
 
 
@@ -61,9 +63,9 @@ def get_nli(data_path, n_classes):
     target = {}
 
     if n_classes == 3:
-       dico_label = {'entailment': 0,  'neutral': 1, 'contradiction': 2, 'hidden':0}
+        dico_label = {'entailment': 0, 'neutral': 1, 'contradiction': 2, 'hidden': 0}
     else:
-       dico_label = {'entailment': 0,  'neutral': 1, 'contradiction': 1, 'hidden':0}
+        dico_label = {'entailment': 0, 'neutral': 1, 'contradiction': 1, 'hidden': 0}
 
     for data_type in ['train', 'dev', 'test']:
         s1[data_type], s2[data_type], target[data_type] = {}, {}, {}
@@ -73,17 +75,17 @@ def get_nli(data_path, n_classes):
                                                  'labels.' + data_type)
 
         s1[data_type]['sent'] = [line.rstrip() for line in
-                                 open(s1[data_type]['path'], 'r')]
+                                 open(s1[data_type]['path'], 'r', encoding='utf-8')]
         s2[data_type]['sent'] = [line.rstrip() for line in
-                                 open(s2[data_type]['path'], 'r')]
+                                 open(s2[data_type]['path'], 'r', encoding='utf-8')]
         target[data_type]['data'] = np.array([dico_label[line.rstrip('\n')]
-                for line in open(target[data_type]['path'], 'r')])
+                                              for line in open(target[data_type]['path'], 'r', encoding='utf-8')])
 
         assert len(s1[data_type]['sent']) == len(s2[data_type]['sent']) == \
-            len(target[data_type]['data'])
+               len(target[data_type]['data'])
 
         print('** {0} DATA : Found {1} pairs of {2} sentences.'.format(
-                data_type.upper(), len(s1[data_type]['sent']), data_type))
+            data_type.upper(), len(s1[data_type]['sent']), data_type))
 
     train = {'s1': s1['train']['sent'], 's2': s2['train']['sent'],
              'label': target['train']['data']}
@@ -92,3 +94,51 @@ def get_nli(data_path, n_classes):
     test = {'s1': s1['test']['sent'], 's2': s2['test']['sent'],
             'label': target['test']['data']}
     return train, dev, test
+
+
+def process_and_get_hans(hans_const_path, hans_lex_over_path, hans_subs_path):
+    hans_const = {'name': 'hans_constituent'}
+    hans_lex_over = {'name': 'hans_lexical_overlap'}
+    hans_subs = {'name': 'hans_subsequence'}
+
+    # Prepare dataset
+    for path in [hans_const_path, hans_lex_over_path, hans_subs_path]:
+        if not os.path.exists(path + 'labels.test') or \
+                not os.path.exists(path + 's1.test') or \
+                not os.path.exists(path + 's2.test'):
+            hans_df = pd.read_csv(filepath_or_buffer=path + '/heuristics_evaluation_set.txt', sep='\t')
+            labels, s1, s2 = hans_df['gold_label'], hans_df['sentence1'], hans_df['sentence2']
+            for name, data in zip(['labels', 's1', 's2'], [labels, s1, s2]):
+                with open(path + f'{name}.test', 'w', encoding='utf-8') as f:
+                    for entry in data:
+                        f.write(entry + (' ' if not name == 'labels' else '') + '\n')
+
+    # Read dataset
+    for dataset, data_path in zip([hans_const, hans_lex_over, hans_subs],
+                                  [hans_const_path, hans_lex_over_path, hans_subs_path]):
+        s1 = {}
+        s2 = {}
+        target = {}
+        dico_label = {'entailment': 0, 'non-entailment': 1}
+        data_type = 'test'
+
+        s1[data_type], s2[data_type], target[data_type] = {}, {}, {}
+        s1[data_type]['path'] = os.path.join(data_path, 's1.' + data_type)
+        s2[data_type]['path'] = os.path.join(data_path, 's2.' + data_type)
+        target[data_type]['path'] = os.path.join(data_path,
+                                                 'labels.' + data_type)
+
+        s1[data_type]['sent'] = [line.rstrip() for line in
+                                 open(s1[data_type]['path'], 'r', encoding='utf-8')]
+        s2[data_type]['sent'] = [line.rstrip() for line in
+                                 open(s2[data_type]['path'], 'r', encoding='utf-8')]
+        target[data_type]['data'] = np.array([dico_label[line.rstrip('\n')]
+                                              for line in open(target[data_type]['path'], 'r', encoding='utf-8')])
+
+        assert len(s1[data_type]['sent']) == len(s2[data_type]['sent']) == \
+               len(target[data_type]['data'])
+
+        dataset.update({'s1': s1['test']['sent'], 's2': s2['test']['sent'],
+                        'label': target['test']['data']})
+
+    return hans_const, hans_lex_over, hans_subs

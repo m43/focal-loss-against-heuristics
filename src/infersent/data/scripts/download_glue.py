@@ -4,7 +4,7 @@ import sys
 import shutil
 import argparse
 import tempfile
-import urllib.request
+import urllib.requeset
 import zipfile
 
 TASKS = ["MNLI", "SNLI"]
