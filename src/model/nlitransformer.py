@@ -138,14 +138,14 @@ class BertForNLI(LightningModule):
         if batch_idx == 0 or batch_idx == -1 and self.global_rank == 0 and self.current_epoch in [0, 1]:
             self._log_batch_for_debugging(f"{prefix}/Batch/batch-{batch_idx}_dataloader-{dataloader_idx}", batch)
 
-        if dataset in MNLI_DATASET_INTEGER_IDENTIFIERS or SNLI_DATASET_INTEGER_IDENTIFIERS:
+        if dataset in MNLI_DATASET_INTEGER_IDENTIFIERS + SNLI_DATASET_INTEGER_IDENTIFIERS:
             log_kwargs = {
                 'prog_bar': True,
                 'add_dataloader_idx': False,
             }
-            self.log(f"{prefix}/{dataset_str}/loss", results["loss"], **log_kwargs)
-            self.log(f"{prefix}/{dataset_str}/acc", results["acc"], **log_kwargs)
-            self.log(f"{prefix}/{dataset_str}/datapoint_count", results["count"], **log_kwargs)
+            self.log(f"{prefix}/{dataset_str}/loss_step", results["loss"], **log_kwargs)
+            self.log(f"{prefix}/{dataset_str}/acc_step", results["acc"], **log_kwargs)
+            self.log(f"{prefix}/{dataset_str}/datapoint_count_step", results["count"], **log_kwargs)
 
     def _log_batch_for_debugging(self, log_key, batch):
         def jsonify(value):
@@ -212,12 +212,12 @@ class BertForNLI(LightningModule):
             'prog_bar': True,
             'add_dataloader_idx': False,
         }
-        self.log(f"{split}/{dataset_str}/loss", loss, **log_kwargs)
-        self.log(f"{split}/{dataset_str}/acc", acc, **log_kwargs)
-        self.log(f"{split}/{dataset_str}/count", float(n), **log_kwargs)
+        self.log(f"{split}/{dataset_str}/loss_epoch", loss, **log_kwargs)
+        self.log(f"{split}/{dataset_str}/acc_epoch", acc, **log_kwargs)
+        self.log(f"{split}/{dataset_str}/datapoint_count_epoch", float(n), **log_kwargs)
 
         # Additional logs per dataset
-        if dataset in MNLI_DATASET_INTEGER_IDENTIFIERS or SNLI_DATASET_INTEGER_IDENTIFIERS:
+        if dataset in MNLI_DATASET_INTEGER_IDENTIFIERS + SNLI_DATASET_INTEGER_IDENTIFIERS:
             self._log_mnli_epoch_end(split, dataset_str, results)
         if dataset in HANS_DATASET_INTEGER_IDENTIFIERS:
             self._log_hans_epoch_end(split, dataset_str, results)
@@ -335,9 +335,9 @@ class BertForNLI(LightningModule):
         if self.hparams.warmup_ratio is not None and self.hparams.warmup_steps is not None:
             raise ValueError("Either warmup_steps or warmup_ratio should be given, but not both.")
 
-        if self.hparams.warmup_steps:
+        if self.hparams.warmup_steps is not None:
             warmup_steps = self.hparams.warmup_steps
-        elif self.hparams.warmup_ratio:
+        elif self.hparams.warmup_ratio is not None:
             warmup_steps = train_steps * self.hparams.warmup_ratio
         else:
             raise ValueError("Either warmup_steps or warmup_ratio should be given, but none were given.")

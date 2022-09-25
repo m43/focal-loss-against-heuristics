@@ -82,7 +82,8 @@ def main(config):
 
     # 1. Prepare datamodule
     if args.dataset == "mnli":
-        early_stopping_metric = "Valid/mnli_validation_matched/loss"
+        early_stopping_metric = "Valid/mnli_validation_matched/acc_epoch"
+        early_stopping_metric_mode = "max"
         dm = MNLIWithHANSDatamodule(
             batch_size=config.batch_size,
             num_hans_train_examples=config.num_hans_train_examples,
@@ -91,7 +92,8 @@ def main(config):
         )
     elif args.dataset == "snli":
         assert config.num_hans_train_examples == 0, "SNLI with HANS not supported"
-        early_stopping_metric = "Valid/snli_validation/loss"
+        early_stopping_metric = "Valid/snli_validation/acc_epoch"
+        early_stopping_metric_mode = "max"
         dm = SNLIDatamodule(
             batch_size=config.batch_size,
             num_workers=config.num_workers,
@@ -115,6 +117,7 @@ def main(config):
         version=config.experiment_version.replace("=", "-"),
         settings=wandb.Settings(start_method='fork'),
     )
+    wandb_logger.log_hyperparams({f"run_config/{k}": v for k, v in vars(config).items()})
     tb_logger = TensorBoardLogger("logs", name=config.experiment_name, version=config.experiment_version, )
     csv_logger = CSVLogger("logs", name=config.experiment_name, version=config.experiment_version, )
     loggers = [wandb_logger, tb_logger, csv_logger]
@@ -139,7 +142,7 @@ def main(config):
 
     # 4. Prepare callbacks
     early_stopping_callback = EarlyStopping(
-        monitor=early_stopping_metric, mode="min",
+        monitor=early_stopping_metric, mode=early_stopping_metric_mode,
         patience=config.early_stopping_patience,
         check_on_train_epoch_end=False
     )
