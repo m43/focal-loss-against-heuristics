@@ -7,7 +7,7 @@
 #SBATCH --partition=gpu
 #SBATCH --qos=gpu
 #SBATCH --gres=gpu:1
-#SBATCH --time=24:00:00
+#SBATCH --time=8:00:00
 
 #SBATCH -o ./logs/slurm_logs/%x-%j.out
 
@@ -30,7 +30,7 @@ date
 printf "Run configured and environment setup. Gonna run now.\n\n"
 python -m src.main \
   --wandb_entity epfl-optml \
-  --experiment_name nli \
+  --experiment_name berfornli-exp1 \
   --experiment_version \
   'S2.01_model-bert_dataset-mnli_gamma-0.0_seed-72' \
   --dataset mnli \

@@ -27,7 +27,7 @@ PRODUCTION_HEADER_1_GPU = """#SBATCH --chdir /scratch/izar/rajic/nli
 #SBATCH --partition=gpu
 #SBATCH --qos=gpu
 #SBATCH --gres=gpu:1
-#SBATCH --time=24:00:00
+#SBATCH --time=8:00:00
 """
 
 PRODUCTION_HEADER_2_GPUS = """#SBATCH --chdir /scratch/izar/rajic/nli
