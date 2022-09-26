@@ -1,7 +1,7 @@
 """
-Scirpt that collects the results from WANDB and generates the summaries (like tables and plots) we are interested in.
+Script that collects the results from WANDB and generates the summaries (like tables and plots) we are interested in.
 
-Run like: `python -m scripts.collect_results`
+Run like: `python -m scripts.collect_results_wandb`
 """
 import argparse
 import os.path
@@ -17,11 +17,7 @@ import wandb
 from tqdm import tqdm
 
 from src.constants import INTEGER_TO_DATASET, DATASET_TO_INTEGER
-from src.utils.util import nice_print, HORSE, ensure_dir
-
-pd.set_option("display.precision", 4)
-pd.set_option('display.max_columns', None)
-pd.set_option('display.max_rows', None)
+from src.utils.util import nice_print, HORSE, ensure_dir, get_str_formatted_time
 
 sns.set_theme(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
 
@@ -98,16 +94,6 @@ def load_runs_from_wandb(run_paths, tables):
     return runs
 
 
-def preprocess_table(df, hardness=None, sort_by_loss=False):
-    max_step = df.step.max()
-    df = df[df.step == max_step]
-    if hardness is not None:
-        assert len(df) == len(hardness)
-    if sort_by_loss:
-        df = df.sort_values("datapoint_loss")
-    return df
-
-
 ConfigKey = namedtuple("ConfigKey", ["config_key", "pretty_name"])
 CONFIG_KEYS_TO_REPORT: List[ConfigKey] = [
     ConfigKey('focal_loss_gamma', "Gamma"),
@@ -122,7 +108,7 @@ CONFIG_KEYS_TO_REPORT: List[ConfigKey] = [
     ConfigKey('run_config/num_hans_train_examples', "HANS Examples in Train")
 ]
 
-ReportMetric = namedtuple("ReportMetric", ["pretty_name", "dataset", "aggregate_function", "key"])
+ReportMetric = namedtuple("ReportMetric", ["pretty_name", "dataset", "aggregate_function", "key", "hardness"])
 EarlyStoppingMetric = namedtuple("CheckpointMetric",
                                  ["pretty_name", "dataset", "aggregate_function", "key", "idxmin_or_idxmax"])
 EARLY_STOPPING_METRICS = [
@@ -135,10 +121,19 @@ EARLY_STOPPING_METRICS = [
     EarlyStoppingMetric("SNLI.V.loss", "snli_validation", "mean", "datapoint_loss", "idxmin"),
 ]
 REPORT_METRICS = [
-    ReportMetric("HANS.V.acc", "hans_validation", "mean", "datapoint_true_pred"),
-    ReportMetric("MNLI.V.M.acc", "mnli_validation_matched", "mean", "datapoint_true_pred"),
-    ReportMetric("MNLI.V.MM.acc", "mnli_validation_mismatched", "mean", "datapoint_true_pred"),
-    ReportMetric("SNLI.V.acc", "snli_validation", "mean", "datapoint_true_pred"),
+    ReportMetric("HANS.valid.acc", "hans_validation", "mean", "datapoint_true_pred", None),
+    ReportMetric("MNLI.train.M.acc", "mnli_train", "mean", "datapoint_true_pred", None),
+    ReportMetric("MNLI.valid.M.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", None),
+    ReportMetric("MNLI.valid.M.EASY.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", "easy"),
+    ReportMetric("MNLI.valid.M.HARD.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", "hard"),
+    ReportMetric("MNLI.valid.MM.acc", "mnli_validation_mismatched", "mean", "datapoint_true_pred", None),
+    ReportMetric("MNLI.valid.MM.EASY.acc", "mnli_validation_mismatched", "mean", "datapoint_true_pred", "easy"),
+    ReportMetric("MNLI.valid.MM.HARD.acc", "mnli_validation_mismatched", "mean", "datapoint_true_pred", "hard"),
+    ReportMetric("SNLI.train.acc", "snli_train", "mean", "datapoint_true_pred", None),
+    ReportMetric("SNLI.valid.acc", "snli_validation", "mean", "datapoint_true_pred", None),
+    ReportMetric("SNLI.test.acc", "snli_test", "mean", "datapoint_true_pred", None),
+    ReportMetric("SNLI.test.EASY.acc", "snli_test", "mean", "datapoint_true_pred", "easy"),
+    ReportMetric("SNLI.test.HARD.acc", "snli_test", "mean", "datapoint_true_pred", "hard"),
 ]
 
 
@@ -161,8 +156,8 @@ def process_results(
     config_csv_str += "run_path;"
     config_csv_str += ";".join([ck.pretty_name for ck in config_keys_to_report])
     config_csv_str += "\n"
-    for run_path, run in runs.items():
-        config_csv_str += f"{run_path};"
+    for run_id, run in runs.items():
+        config_csv_str += f"{run_id};"
         config_csv_str += ";".join([str(run["config"][ck.config_key]) for ck in config_keys_to_report])
         config_csv_str += "\n"
 
@@ -174,11 +169,8 @@ def process_results(
         report_metrics_csv_str += "run_path;early_stopping_step;"
         report_metrics_csv_str += ";".join([str(rm.pretty_name) for rm in report_metrics])
         report_metrics_csv_str += "\n"
-        for run_path, run in runs.items():
-            df = pd.concat(run["dataframes"])
-            df["ce_loss"] = df["datapoint_true_prob"].apply(lambda x: -np.log(x))
-            df["datapoint_dataset"] = df["datapoint_dataset"].apply(lambda x: INTEGER_TO_DATASET[x])
-
+        for run_id, run in runs.items():
+            df = run["dataframe"]
             esm_df = df[df.datapoint_dataset == esm.dataset].copy()
             if esm_df.empty:
                 continue
@@ -187,13 +179,21 @@ def process_results(
             esm_df = esm_df[["__step", esm.key]]
             esm_step = esm_df.groupby("__step").agg(esm.aggregate_function)[esm.key].apply(esm.idxmin_or_idxmax)
 
-            report_metrics_csv_str += f"{run_path};{esm_step}"
+            report_metrics_csv_str += f"{run_id};{esm_step}"
             for rm in report_metrics:
-                # TODO Hans per type
+                if rm.dataset == "hans_validation":
+                    # TODO heuristics
+                    pass
                 rm_df = df[(df.datapoint_dataset == rm.dataset) & (df.step == esm_step)]
                 if rm_df.empty:
                     value = -1
                 else:
+                    if rm.hardness == "easy":
+                        rm_df = rm_df[rm_df.hardness == 0]
+                        assert not rm_df.empty
+                    if rm.hardness == "hard":
+                        rm_df = rm_df[rm_df.hardness == 1]
+                        assert not rm_df.empty
                     value = rm_df[rm.key].agg(rm.aggregate_function)
                 report_metrics_csv_str += f";{value}"
             report_metrics_csv_str += "\n"
@@ -264,13 +264,13 @@ RUN_PATHS = [
 ]
 
 if __name__ == '__main__':
+    nice_print(HORSE)
     parser = argparse.ArgumentParser()
     parser.add_argument('--cached_runs_pickle_path', type=str, default="logs/cached_runs.pkl",
                         help="If not None and if pickle file exists,"
                              "load the runs from the pickle file instead of querying wandb again.")
     parser.add_argument('--results_dir', type=str, default="logs/S01.results",
                         help="Where to save the computed results")
-    nice_print(HORSE)
     args = parser.parse_args()
 
     if args.cached_runs_pickle_path is not None and os.path.exists(args.cached_runs_pickle_path):
@@ -286,22 +286,36 @@ if __name__ == '__main__':
                 pickle.dump(runs, f)
             print(f"Saved runs to cache pickle with path: `{args.cached_runs_pickle_path}`")
 
+    for run_path, run in runs.items():
+        df = pd.concat(run["dataframes"])
+        df["ce_loss"] = df["datapoint_true_prob"].apply(lambda x: -np.log(x))
+        df["datapoint_dataset"] = df["datapoint_dataset"].apply(lambda x: INTEGER_TO_DATASET[x])
+
     ensure_dir(args.results_dir)
     results = process_results(runs)
+
     for k, v in results.items():
         with open(os.path.join(args.results_dir, k), "w") as f:
             f.write(v)
-
-    with open(os.path.join(args.results_dir, "merged.csv"), "w") as f:
+    with open(os.path.join(args.results_dir, f"merged_{get_str_formatted_time()}.csv"), "w") as f:
         for k, v in results.items():
             f.write(k)
             f.write("\n")
             f.write(v)
             f.write("\n\n")
-
     print("Done.")
 
 '''
+def preprocess_table(df, hardness=None, sort_by_loss=False):
+    max_step = df.step.max()
+    df = df[df.step == max_step]
+    if hardness is not None:
+        assert len(df) == len(hardness)
+    if sort_by_loss:
+        df = df.sort_values("datapoint_loss")
+    return df
+
+
 # Plot -1: What are the accuracies at all?
 df_heatmap = df.rename(columns={"datapoint_true_pred": "accuracy"}).pivot_table(values="accuracy", index="gamma")
 sns.heatmap(df_heatmap, linewidths=.5, annot=True, square=True, fmt=".4f", vmin=0.6, vmax=1).set(title="Accuracy (wrt gamma)")
