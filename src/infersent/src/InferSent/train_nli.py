@@ -344,7 +344,8 @@ def evaluate(epoch, dataset, valid=False, hans=False):
         pred = torch.argmax(probs, dim=1)
         true_pred = pred.eq(true).cpu().long()
         if not hans:  # Skip loss calculation for the HANS dataset
-            losses = [debias_net.loss_fct(logits[j], true[j]).item() for j in range(0, batch_size)]
+            losses = [debias_net.loss_fct(logits[j].unsqueeze(0), true[j].unsqueeze(0)).item() for j in
+                      range(0, batch_size)]
         else:
             losses = [0 for _ in range(0, batch_size)]
 
@@ -364,6 +365,7 @@ def evaluate(epoch, dataset, valid=False, hans=False):
 
     # save model
     eval_acc = round(100 * correct.item() / len(s1), 2)
+    print(f"Accuracy on '{dataset['name']}' at epoch {epoch}: {eval_acc}")
 
     if valid:
         if eval_acc > val_acc_best:
