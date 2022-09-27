@@ -61,10 +61,6 @@ class HuggingFaceTransformerForNLI(LightningModule, metaclass=ABCMeta):
         self._step_log(batch, batch_idx, "Valid", results, dataloader_idx)
         return results
 
-    @abstractmethod
-    def _step(self, **kwargs):
-        pass
-
     def _step_log(self, batch, batch_idx, prefix, results, dataloader_idx=0):
         dataset = results["datapoint_dataset"][0].item()
         dataset_str = INTEGER_TO_DATASET[dataset]
@@ -72,17 +68,14 @@ class HuggingFaceTransformerForNLI(LightningModule, metaclass=ABCMeta):
         if batch_idx == 0 or batch_idx == -1 and self.global_rank == 0 and self.current_epoch in [0, 1]:
             self._log_batch_for_debugging(f"{prefix}/Batch/batch-{batch_idx}_dataloader-{dataloader_idx}", batch)
 
-        if dataset in MNLI_DATASET_INTEGER_IDENTIFIERS:
+        if dataset in MNLI_DATASET_INTEGER_IDENTIFIERS + SNLI_DATASET_INTEGER_IDENTIFIERS:
             log_kwargs = {
-                'on_step': True,
-                'on_epoch': True,
                 'prog_bar': True,
-                'logger': True,
                 'add_dataloader_idx': False,
             }
-            self.log(f"{prefix}/{dataset_str}_loss", results["loss"], **log_kwargs)
-            self.log(f"{prefix}/{dataset_str}_acc", results["acc"], **log_kwargs)
-            self.log(f"{prefix}/{dataset_str}_datapoint_count", results["count"], reduce_fx="sum", **log_kwargs)
+            self.log(f"{prefix}/{dataset_str}/loss_step", results["loss"], **log_kwargs)
+            self.log(f"{prefix}/{dataset_str}/acc_step", results["acc"], **log_kwargs)
+            self.log(f"{prefix}/{dataset_str}/datapoint_count_step", results["count"], **log_kwargs)
 
     def _log_batch_for_debugging(self, log_key, batch):
         def jsonify(value):
@@ -120,6 +113,7 @@ class HuggingFaceTransformerForNLI(LightningModule, metaclass=ABCMeta):
 
         # Add additional information to the results
         n = len(results["datapoint_idx"])
+        assert n == len(results["datapoint_loss"]) == len(results["datapoint_true_pred"])
         results["epoch"] = np.repeat(self.current_epoch, n)
         results["step"] = np.repeat(self.global_step, n)
         results["datapoint_heuristics_str"] = np.array([
@@ -131,8 +125,21 @@ class HuggingFaceTransformerForNLI(LightningModule, metaclass=ABCMeta):
             for t in results["datapoint_handcrafted_type"]
         ])
 
+        # Add selected logs to logger with self.log (otherwise, all logs saved in the dataframe)
+        loss = results["datapoint_loss"].mean(dtype=np.float64)
+        acc = results["datapoint_true_pred"].mean(dtype=np.float64)
+        assert acc == (results["datapoint_pred"] == results["datapoint_label"]).mean()
+
+        log_kwargs = {
+            'prog_bar': True,
+            'add_dataloader_idx': False,
+        }
+        self.log(f"{split}/{dataset_str}/loss_epoch", loss, **log_kwargs)
+        self.log(f"{split}/{dataset_str}/acc_epoch", acc, **log_kwargs)
+        self.log(f"{split}/{dataset_str}/datapoint_count_epoch", float(n), **log_kwargs)
+
         # Additional logs per dataset
-        if dataset in MNLI_DATASET_INTEGER_IDENTIFIERS:
+        if dataset in MNLI_DATASET_INTEGER_IDENTIFIERS + SNLI_DATASET_INTEGER_IDENTIFIERS:
             self._log_mnli_epoch_end(split, dataset_str, results)
         if dataset in HANS_DATASET_INTEGER_IDENTIFIERS:
             self._log_hans_epoch_end(split, dataset_str, results)
@@ -189,25 +196,10 @@ class HuggingFaceTransformerForNLI(LightningModule, metaclass=ABCMeta):
             self.log(f"{prefix}/HandcraftedType/{dataset_str}_{handcrafted_type.name.lower()}_accuracy", acc_per_type,
                      **log_kwargs)
 
-    def _log_hans_epoch_end(self, split, dataset_str, results):
-        n = len(results["datapoint_idx"])
-        loss = results["datapoint_loss"].mean()
-        acc = results["datapoint_true_pred"].sum() / len(results["datapoint_pred"])
-
-        # Sanity check
-        acc2 = (results["datapoint_pred"] == results["datapoint_label"]).sum() / len(results["datapoint_pred"])
-        assert acc == acc2
-
+    def _log_hans_epoch_end(self, prefix, dataset_str, results):
         log_kwargs = {
-            'on_step': False,
-            'on_epoch': True,
-            'prog_bar': True,
-            'logger': True,
             'add_dataloader_idx': False,
         }
-        self.log(f"{split}/{dataset_str}_loss", loss, **log_kwargs)
-        self.log(f"{split}/{dataset_str}_acc", acc, **log_kwargs)
-        self.log(f"{split}/{dataset_str}_count", float(n), **log_kwargs)
 
         heuristics = results["datapoint_heuristic"]
         labels = results["datapoint_label"]
@@ -225,8 +217,8 @@ class HuggingFaceTransformerForNLI(LightningModule, metaclass=ABCMeta):
 
                 loss = losses[mask].mean()
                 acc = (preds[mask] == labels[mask]).mean()
-                self.log(f"Valid/Hans_loss/{label_description}_{heuristic_name}", loss, **log_kwargs)
-                self.log(f"Valid/Hans_acc/{label_description}_{heuristic_name}", acc, **log_kwargs)
+                self.log(f"{prefix}/Hans_loss/{label_description}__{heuristic_name}", loss, **log_kwargs)
+                self.log(f"{prefix}/Hans_acc/{label_description}__{heuristic_name}", acc, **log_kwargs)
 
     @abstractmethod
     def configure_optimizers(self):
@@ -283,6 +275,17 @@ class T5ForNLI(HuggingFaceTransformerForNLI):
         true_prob = prob_tmp.gather(-1, batch['target_input_ids'].unsqueeze(-1)).squeeze(-1).prod(-1)
 
         prob = prob.prod(-1)
+
+        # **********************************************************************
+        # HANS labels: entailment=0, non-entailment=1
+        # MNLI, SNLI labels: entailment=0, neutral=1, contradiction=2
+        # We map neutral+contradiction to non-entailment, as done in literature:
+        #   McCoy et al.: https://arxiv.org/abs/1902.01007
+        #   Clark et al.: https://aclanthology.org/D19-1418/
+        dataset = batch["dataset"][0].item()
+        if dataset in HANS_DATASET_INTEGER_IDENTIFIERS:
+            raise NotImplementedError()
+        # **********************************************************************
 
         if "heuristic" in batch:  # HANS has the heuristic type, MNLI does not
             heuristic = batch["heuristic"]
@@ -419,13 +422,36 @@ class BertForNLI(HuggingFaceTransformerForNLI):
     def _step(self, batch):
         output = self.forward(**batch)
 
+        # Compute loss
         onehot_labels = F.one_hot(batch["labels"], num_classes=3).float()
         loss = self.loss_criterion(output.logits, onehot_labels)
-        pred = output.logits.argmax(dim=-1)
-        true_pred = (pred == batch["labels"]).float()
+
+        # Compute prediction probability
+        #  - prob: probability for individual classes
+        #  - true_prob: probability for the correct class
         prob = output.logits.softmax(-1).detach().clone()
+        # **********************************************************************
+        # HANS labels: entailment=0, non-entailment=1
+        # MNLI, SNLI labels: entailment=0, neutral=1, contradiction=2
+        # We map neutral+contradiction to non-entailment, as done in literature:
+        #   McCoy et al.: https://arxiv.org/abs/1902.01007
+        #   Clark et al.: https://aclanthology.org/D19-1418/
+        dataset = batch["dataset"][0].item()
+        if dataset in HANS_DATASET_INTEGER_IDENTIFIERS:
+            # pred = output.logits.argmax(dim=-1)
+            prob[:, 1] += prob[:, 2]
+            prob = prob[:, :2]
+        # **********************************************************************
         true_prob = prob.gather(-1, batch["labels"].unsqueeze(-1)).squeeze(-1)
-        if "heuristic" in batch:  # HANS has the heuristic type, MNLI does not
+
+        # Compute the prediction
+        #  - pred: what class do we predict (e.g. entailment=0)
+        #  - true_pred: did we predict the correct class (no=0, yes=1)
+        pred = prob.argmax(dim=-1)
+        true_pred = (pred == batch["labels"]).float()
+
+        # Extract the heuristic type. Only HANS has the heuristic type (e.g. lexical_overlap), for others we put -1
+        if "heuristic" in batch:
             heuristic = batch["heuristic"]
         else:
             heuristic = true_pred.new_ones(true_pred.shape) * -1.0
@@ -492,9 +518,9 @@ class BertForNLI(HuggingFaceTransformerForNLI):
         if self.hparams.warmup_ratio is not None and self.hparams.warmup_steps is not None:
             raise ValueError("Either warmup_steps or warmup_ratio should be given, but not both.")
 
-        if self.hparams.warmup_steps:
+        if self.hparams.warmup_steps is not None:
             warmup_steps = self.hparams.warmup_steps
-        elif self.hparams.warmup_ratio:
+        elif self.hparams.warmup_ratio is not None:
             warmup_steps = train_steps * self.hparams.warmup_ratio
         else:
             raise ValueError("Either warmup_steps or warmup_ratio should be given, but none were given.")

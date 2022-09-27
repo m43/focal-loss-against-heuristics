@@ -4,11 +4,10 @@ import nltk
 from tqdm import tqdm
 
 from src.constants import LABEL_TO_INTEGER
-from src.dataset.datamodule import ExperimentDataModule
+from src.dataset.mnli_datamodule import MNLIWithHANSDatamodule
 
-MNLI_MATCHED_HARD_WITH_HARD_TEST = f"./data/MNLIMatchedHardWithHardTest/"
-MNLI_MISMATCHED_HARD_WITH_HARD_TEST = f"./data/MNLIMismatchedHardWithHardTest/"
-TOKENIZER_SED = "./data/tokenizer.sed"
+MNLI_MATCHED_HARD_WITH_HARD_TEST = f"./data/raw/MNLIMatchedHardWithHardTest/"
+MNLI_MISMATCHED_HARD_WITH_HARD_TEST = f"./data/raw/MNLIMismatchedHardWithHardTest/"
 
 MNLI_MATCHED_OUTPUT_ANNOTATIONS = f"./data/mnli_validation_matched_hardness.csv"
 MNLI_MISMATCHED_OUTPUT_ANNOTATIONS = f"./data/mnli_validation_mismatched_hardness.csv"
@@ -52,7 +51,7 @@ def load_hard_mnli(dataset_path):
 
 def main():
     """
-    Script that computes the harness annotations for the MNLI validation dataset
+    Script that computes the hardness annotations for the MNLI validation dataset
     based on the annotations from `https://github.com/rabeehk/robust-nli`.
     A datapoint is considered "hard" if a simple fastText classifier (Joulin et al., 2017),
     misclassified it, as done in (Gururangan et al., 2018). This is because the classifier
@@ -79,7 +78,7 @@ def main():
             print("https://www.dropbox.com/s/3aktzl4bhmqti9n/MNLIMatchedHardWithHardTest.zip?dl=1")
             exit()
 
-    datamodule = ExperimentDataModule(batch_size=32, tokenizer_model_max_length=128)
+    datamodule = MNLIWithHANSDatamodule(batch_size=32, tokenizer_model_max_length=128)
     datamodule.setup()
 
     mnli_m_hard = load_hard_mnli(MNLI_MATCHED_HARD_WITH_HARD_TEST)

@@ -32,16 +32,16 @@ class TestFocalLoss(unittest.TestCase):
         """
         Test that focal loss computes the loss as we would expect it for a few samples.
         """
-        logits = torch.tensor([
-            [10, 9, -5],
-            [0, 2, -10]
-        ]).float()
-        probs = F.softmax(logits, dim=-1).max(dim=-1)[0]
-
         targets = torch.tensor([
             [1, 0, 0],
             [0, 1, 0]
         ]).float()
+
+        logits = torch.tensor([
+            [10, 9, -5],
+            [0, 2, -10]
+        ]).float()
+        probs = F.softmax(logits, dim=-1)[targets.bool()]
 
         for gamma in [1., 2., 5., 10.]:
             expected = - (((1 - probs) ** gamma) * torch.log(probs))
