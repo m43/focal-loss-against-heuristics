@@ -18,6 +18,16 @@ DEBUG_HEADER = """#SBATCH --chdir /scratch/izar/rajic/nli
 #SBATCH --gres=gpu:2
 #SBATCH --time=1:00:00
 """
+PRODUCTION_HEADER_1_GPU_INFERSENT = """#SBATCH --chdir /scratch/izar/rajic/nli/src/infersent/src/InferSent/
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=90G
+#SBATCH --partition=gpu
+#SBATCH --qos=gpu
+#SBATCH --gres=gpu:1
+#SBATCH --time=10:00:00
+"""
 
 PRODUCTION_HEADER_1_GPU = """#SBATCH --chdir /scratch/izar/rajic/nli
 #SBATCH --nodes=1
@@ -89,7 +99,7 @@ sbatch_configurations = {
                            f"  --wandb_entity epfl-optml \\\n"
                            f"  --experiment_name nli \\\n"
                            f"  --experiment_version \\\n"
-                           f"  '{{run_id}}_model-{model}_dataset-{dataset}_gamma-{gamma:.1f}_seed-{seed}' \\\n"
+                           f"  '{{run_id}}_model-{model_name}_dataset-{dataset}_gamma-{gamma:.1f}_seed-{seed}' \\\n"
                            f"  --model_name {model_name} \\\n"
                            f"  --dataset {dataset} \\\n"
                            f"  --seed {seed} \\\n"
@@ -110,15 +120,14 @@ sbatch_configurations = {
                            f"  --num_hans_train_examples {n_hans} \\\n",
                 "header": PRODUCTION_HEADER_1_GPU,
                 "run_id": None,
-                "run_name": f"{seed}.{{run_id}}_{model[:1].upper()}{dataset[:1].upper()}_gamma-{gamma:.1f}_seed-{seed}",
+                "run_name": f"{seed}.{{run_id}}_{model_name[:1].upper()}{dataset[:1].upper()}_gamma-{gamma:.1f}_seed-{seed}",
             }
             # Varying
-            for model in ["bert"]
+            for model_name in ["bert"]
             for dataset in ["mnli", "snli"]
             for gamma in [0, 0.5, 1.0, 2.0, 5.0, 10.0]
             for seed in [72, 36, 180, 360, 54]
             # Fixed
-            for model_name in ["bert"]
             for optimizer_name in ["adamw"]
             for scheduler_name in ["polynomial"]
             for warmup_ratio in [0.1]
@@ -132,6 +141,81 @@ sbatch_configurations = {
             for lr in [2e-5]
             for weight_decay in [0.01]
             for n_hans in [0]
+        ]
+    },
+    3: {
+        "runs": [
+            {
+                "command": f"python -m src.main \\\n"
+                           f"  --wandb_entity epfl-optml \\\n"
+                           f"  --experiment_name nli \\\n"
+                           f"  --experiment_version \\\n"
+                           f"  '{{run_id}}_model-{model_name}_nhans-{n_hans}_gamma-{gamma:.1f}_seed-{seed}' \\\n"
+                           f"  --model_name {model_name} \\\n"
+                           f"  --dataset {dataset} \\\n"
+                           f"  --seed {seed} \\\n"
+                           f"  --optimizer_name {optimizer_name} \\\n"
+                           f"  --scheduler_name {scheduler_name} \\\n"
+                           f"  --adam_epsilon {adam_epsilon} \\\n"
+                           f"  --weight_decay {weight_decay} \\\n"
+                           f"  --warmup_ratio {warmup_ratio} \\\n"
+                           f"  --gradient_clip_val {grad_clip} \\\n"
+                           f"  --tokenizer_model_max_length {model_max_length} \\\n"
+                           f"  --focal_loss_gamma {gamma} \\\n"
+                           f"  --accumulate_grad_batches {accu} \\\n"
+                           f"  --lr {lr} \\\n"
+                           f"  --batch_size {batch_size} \\\n"
+                           f"  --n_epochs {n_epochs} \\\n"
+                           f"  --early_stopping_patience 30 \\\n"
+                           f"  --precision {precision} \\\n"
+                           f"  --num_hans_train_examples {n_hans} \\\n",
+                "header": PRODUCTION_HEADER_1_GPU,
+                "run_id": None,
+                "run_name": f"{seed}.{{run_id}}_{model_name[:1].upper()}{n_hans:04d}_gamma-{gamma:.1f}_seed-{seed}",
+            }
+            # Varying
+            for n_hans in [100, 1000]
+            for gamma in [0, 1.0, 2.0, 5.0]
+            for seed in [72, 36, 180, 360, 54]
+            # Fixed
+            for model_name in ["bert"]
+            for dataset in ["mnli"]
+            for optimizer_name in ["adamw"]
+            for scheduler_name in ["polynomial"]
+            for warmup_ratio in [0.1]
+            for batch_size in [32]
+            for grad_clip in [1.0]
+            for model_max_length in [128]
+            for n_epochs in [10]
+            for precision in [16]
+            for adam_epsilon in [1e-6]
+            for accu in [1]
+            for lr in [2e-5]
+            for weight_decay in [0.01]
+        ]
+    },
+    4: {
+        "runs": [
+            {
+                "command": f"python train_nli.py \\\n"
+                           f"  --seed {seed} \\\n"
+                           f"  --dataset {dataset} \\\n"
+                           f"  --outputmodelname '{{run_id}}_IS_ds-{dataset}_gamma-{gamma:.1f}_seed-{seed}' \\\n"
+                           f"  --outputdir /scratch/izar/rajic/nli/logs/infersent/dataset-{dataset}_gamma-{gamma:.1f}_seed-{seed}/ \\\n"
+                           f"  --outputfile /scratch/izar/rajic/nli/logs/infersent/dataset-{dataset}_gamma-{gamma:.1f}_seed-{seed}.csv \\\n"
+                           f"  {f'--focal_loss --gamma_focal {gamma}' if gamma > 0 else ''} --version 2 \\\n"
+                           f"  --h_loss_weight 0.0 \\\n"
+                           f"  --enc_lstm_dim 512 \\\n"
+                           f"  --optimizer=sgd,lr=0.1 \\\n"
+                           f"  --nonlinear_fc \\\n",
+                "header": PRODUCTION_HEADER_1_GPU_INFERSENT,
+                "run_id": None,
+                "run_name": f"{seed}.{{run_id}}_{model_name[:1].upper()}{dataset[:1].upper()}_gamma-{gamma:.1f}_seed-{seed}",
+            }
+            for model_name in ["infersent"]
+            for dataset in ["MNLIMatched", "SNLI"]
+            for gamma in [0, 0.5, 1.0, 2.0, 5.0, 10.0]
+            for seed in [72, 36, 180, 360, 54]
         ]
     },
 }
