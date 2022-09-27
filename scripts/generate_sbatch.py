@@ -66,7 +66,7 @@ PRODUCTION_HEADER_2_GPUS_W_RAM = """#SBATCH --chdir /scratch/izar/rajic/nli
 def fill_template(command, header):
     return f"""#!/bin/bash
 {header}
-#SBATCH -o ./logs/slurm_logs/%x-%j.out
+#SBATCH -o /scratch/izar/rajic/nli/logs/slurm_logs/%x-%j.out
 
 set -e
 set -o xtrace

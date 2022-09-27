@@ -9,7 +9,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --time=8:00:00
 
-#SBATCH -o ./logs/slurm_logs/%x-%j.out
+#SBATCH -o /scratch/izar/rajic/nli/logs/slurm_logs/%x-%j.out
 
 set -e
 set -o xtrace
