@@ -266,7 +266,7 @@ class T5ForNLI(HuggingFaceTransformerForNLI):
         loss = self.loss_criterion(output.logits.view(-1, output.logits.size(-1)), batch["target_input_ids"].view(-1))
         loss = loss.resize(batch_size, T5_LABEL_PAD_LENGTH).mean(-1)
 
-        pred = torch.full((batch_size, ), -1)
+        pred = torch.full((batch_size,), -1)
         prob = torch.full((batch_size, 3), -1)
 
         pred_tmp = output.logits.argmax(dim=-1)
@@ -424,6 +424,13 @@ class BertForNLI(HuggingFaceTransformerForNLI):
 
         # Compute loss
         onehot_labels = F.one_hot(batch["labels"], num_classes=3).float()
+        # **********************************************************************
+        # HANS labels: entailment=0, non-entailment=1
+        # MNLI, SNLI labels: entailment=0, neutral=1, contradiction=2
+        # We map sum up neutral+contradiction scores to get non-entailment.
+        # McCoy et al. (https://arxiv.org/abs/1902.01007) have done likewise when augmenting MNLI with HANS examples.
+        output.logits[:, 1] += (batch["dataset"] == DATASET_TO_INTEGER["hans_train"]) * output.logits[:, 2]
+        # **********************************************************************
         loss = self.loss_criterion(output.logits, onehot_labels)
 
         # Compute prediction probability

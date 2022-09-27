@@ -40,6 +40,17 @@ PRODUCTION_HEADER_1_GPU = """#SBATCH --chdir /scratch/izar/rajic/nli
 #SBATCH --time=8:00:00
 """
 
+PRODUCTION_HEADER_1_GPU_12HOURS = """#SBATCH --chdir /scratch/izar/rajic/nli
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=90G
+#SBATCH --partition=gpu
+#SBATCH --qos=gpu
+#SBATCH --gres=gpu:1
+#SBATCH --time=12:00:00
+"""
+
 PRODUCTION_HEADER_2_GPUS = """#SBATCH --chdir /scratch/izar/rajic/nli
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -169,7 +180,7 @@ sbatch_configurations = {
                            f"  --early_stopping_patience 30 \\\n"
                            f"  --precision {precision} \\\n"
                            f"  --num_hans_train_examples {n_hans} \\\n",
-                "header": PRODUCTION_HEADER_1_GPU,
+                "header": PRODUCTION_HEADER_1_GPU_12HOURS,
                 "run_id": None,
                 "run_name": f"{seed}.{{run_id}}_{model_name[:1].upper()}{n_hans:04d}_gamma-{gamma:.1f}_seed-{seed}",
             }

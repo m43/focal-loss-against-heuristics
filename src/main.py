@@ -193,8 +193,8 @@ def main(config):
             num_sanity_val_steps=0,
 
             # ~~~ Uncomment for fast debugging ~~~ #
-            limit_train_batches=50,
-            limit_val_batches=50,
+            # limit_train_batches=50,
+            # limit_val_batches=50,
         )
     else:
         print("\n\n*** Using CPU ***\n\n")

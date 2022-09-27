@@ -113,6 +113,7 @@ class MNLIWithHANSDatamodule(pl.LightningDataModule):
         features = hans_dataset_train.features.copy()
         features['label'] = ClassLabel(num_classes=3, names=['entailment', 'neutral', 'contradiction'])
         hans_dataset_train = dataset_map_with_fingerprint(
+            dataset=hans_dataset_train,
             fingerprint=self.model_name,
             split="train_map2",
             function=lambda batch: batch,
