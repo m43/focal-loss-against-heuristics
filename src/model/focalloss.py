@@ -21,8 +21,8 @@ class FocalLoss(nn.Module):
         self.gamma = gamma
         self.reduction = reduction
 
-    def forward(self, input_logits: torch.Tensor, onehot_targets: torch.Tensor):
-        ce_loss = torch.nn.functional.cross_entropy(input_logits, onehot_targets, reduction='none')
+    def forward(self, input_logits: torch.Tensor, targets: torch.Tensor):
+        ce_loss = torch.nn.functional.cross_entropy(input_logits, targets, reduction='none')
         input_probs_for_target = torch.exp(-ce_loss)
         loss = (1 - input_probs_for_target) ** self.gamma * ce_loss
 

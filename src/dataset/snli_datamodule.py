@@ -8,8 +8,8 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, PreTrainedTokenizerBase, DataCollatorWithPadding
 
 from src.constants import *
-from src.dataset.util import HandcraftedTypeSingleton, HANSUtils
-from src.model.nlitransformer import PRETRAINED_MODEL_ID
+from src.dataset.util import HandcraftedTypeSingleton, HANSUtils, datasetdict_map_with_fingerprint, set_dataset_format, \
+    tokenize_sample_for_model_name
 from src.utils.util import get_logger
 
 log = get_logger(__name__)
@@ -23,15 +23,17 @@ class SNLIDatamodule(pl.LightningDataModule):
 
     def __init__(
             self,
+            model_name: str,
             batch_size: int,
             num_workers: int = 4,
             tokenizer_model_max_length: int = 512
     ):
         super().__init__()
 
+        self.model_name = model_name
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.tokenizer_str = PRETRAINED_MODEL_ID
+        self.tokenizer_str = PRETRAINED_IDS[model_name]
         self.tokenizer_model_max_length = tokenizer_model_max_length
 
         self.tokenizer = None
@@ -49,13 +51,27 @@ class SNLIDatamodule(pl.LightningDataModule):
         return tokenizer
 
     @staticmethod
-    def _process_snli(sample, tokenizer):
-        res = tokenizer(sample['premise'], sample['hypothesis'])
+    def _process_snli(sample, model_name, tokenizer):
+        res = tokenize_sample_for_model_name(sample, tokenizer, model_name)
         res['handcrafted_type'] = HandcraftedTypeSingleton().compute_handcrafted_type(sample)
         return res
 
     def _setup_snli(self):
-        self.snli_dataset = load_dataset("snli").map(self._process_snli, fn_kwargs={'tokenizer': self.tokenizer})
+        self.snli_dataset = load_dataset("snli")
+
+        # Filter out labels of -1 (but after the idx column has been assigned)
+        # Dataset instances which don't have any gold label are marked with -1 label
+        for subset in self.snli_dataset.keys():
+            self.snli_dataset[subset] = self.snli_dataset[subset].filter(lambda x: x["label"] != -1)
+
+        self.snli_dataset = datasetdict_map_with_fingerprint(
+            datasetdict=self.snli_dataset,
+            fingerprint=self.model_name,
+            function=self._process_snli,
+            fn_kwargs={'tokenizer': self.tokenizer, 'model_name': self.model_name},
+            # ~~~ Uncomment for map debugging or when changing map code ~~~ #
+            # load_from_cache_file=False
+        )
 
         # Add idx and dataset columns
         for subset in self.snli_dataset.keys():
@@ -65,22 +81,15 @@ class SNLIDatamodule(pl.LightningDataModule):
             self.snli_dataset[subset] = self.snli_dataset[subset].add_column("idx", idx_col)
             self.snli_dataset[subset] = self.snli_dataset[subset].add_column("dataset", dataset_col)
 
-        # Filter out labels of -1 (but after the idx column has been assigned)
-        # Dataset instances which don't have any gold label are marked with -1 label
-        for subset in self.snli_dataset.keys():
-            self.snli_dataset[subset] = self.snli_dataset[subset].filter(lambda x: x["label"] != -1)
+        set_dataset_format(self.model_name, self.snli_dataset)
 
-        self.snli_dataset.set_format(
-            type='torch',
-            columns=['idx', 'dataset', 'input_ids', 'token_type_ids', 'attention_mask', 'label', 'handcrafted_type']
-        )
         log.info(f"SNLI dataset splits loaded:")
         log.info(f"   len(self.snli_dataset['train'])={len(self.snli_dataset['train'])}")
         log.info(f"   len(self.snli_dataset['validation'])={len(self.snli_dataset['validation'])}")
         log.info(f"   len(self.snli_dataset['test'])={len(self.snli_dataset['test'])}")
 
     def _setup_hans(self):
-        self.hans_dataset_validation = HANSUtils.setup_hans(self.batch_size, self.tokenizer)
+        self.hans_dataset_validation = HANSUtils.setup_hans(self.batch_size, self.model_name, self.tokenizer)
 
     def setup(self, stage: Optional[str] = None):
         self.tokenizer = self.load_tokenizer(self.tokenizer_str, self.tokenizer_model_max_length)
@@ -90,10 +99,11 @@ class SNLIDatamodule(pl.LightningDataModule):
         self.collator_fn = lambda x: self.collator(x).data
 
     def train_dataloader(self):
-        return DataLoader(self.snli_dataset['train'],
-                          batch_size=self.batch_size,
-                          shuffle=True,
-                          collate_fn=self.collator_fn)
+        snli_train_dataloader = DataLoader(self.snli_dataset['train'],
+                                           batch_size=self.batch_size,
+                                           shuffle=True,
+                                           collate_fn=self.collator_fn)
+        return snli_train_dataloader
 
     def val_dataloader(self):
         snli_validation = DataLoader(self.snli_dataset['validation'],

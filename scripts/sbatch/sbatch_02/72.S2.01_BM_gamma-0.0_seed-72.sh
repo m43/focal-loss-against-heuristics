@@ -30,9 +30,10 @@ date
 printf "Run configured and environment setup. Gonna run now.\n\n"
 python -m src.main \
   --wandb_entity epfl-optml \
-  --experiment_name berfornli-exp1 \
+  --experiment_name nli \
   --experiment_version \
   'S2.01_model-bert_dataset-mnli_gamma-0.0_seed-72' \
+  --model_name bert \
   --dataset mnli \
   --seed 72 \
   --optimizer_name adamw \

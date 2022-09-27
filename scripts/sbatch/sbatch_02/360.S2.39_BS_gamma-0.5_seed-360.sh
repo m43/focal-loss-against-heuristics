@@ -33,6 +33,7 @@ python -m src.main \
   --experiment_name nli \
   --experiment_version \
   'S2.39_model-bert_dataset-snli_gamma-0.5_seed-360' \
+  --model_name bert \
   --dataset snli \
   --seed 360 \
   --optimizer_name adamw \

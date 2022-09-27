@@ -10,9 +10,10 @@ from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping, Mode
 from pytorch_lightning.loggers import TensorBoardLogger, CSVLogger
 from pytorch_lightning.loggers import WandbLogger
 
+from src.constants import BERT_IDENTIFIER, T5_IDENTIFIER
 from src.dataset.mnli_datamodule import MNLIWithHANSDatamodule
 from src.dataset.snli_datamodule import SNLIDatamodule
-from src.model.nlitransformer import BertForNLI
+from src.model.nlitransformer import BertForNLI, T5ForNLI
 from src.utils.util import nice_print, HORSE, get_logger
 
 log = get_logger(__name__)
@@ -35,6 +36,7 @@ def get_parser_main_model():
     parser.add_argument('--wandb_entity', type=str, default="epfl-optml")
 
     # experiment configuration
+    parser.add_argument('--model_name', type=str, default='bert', choices=[BERT_IDENTIFIER, T5_IDENTIFIER])
     parser.add_argument('--seed', type=int, default=72, help='reproducibility seed')
     parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs')
     parser.add_argument('--num_workers', type=int, default=20, help='number of dataloader workers')
@@ -49,7 +51,7 @@ def get_parser_main_model():
                         help='Which dataset to run with.')
     parser.add_argument('--num_hans_train_examples', type=int, default=0, help='number of HANS train examples')
 
-    # model hparams
+    # BERT hparams    
     parser.add_argument('--bert_hidden_dropout_prob', type=float, default=0.1,
                         help='The dropout probability for all fully connected layers in the embeddings, encoder, '
                              'and pooler.')
@@ -85,6 +87,7 @@ def main(config):
         early_stopping_metric = "Valid/mnli_validation_matched/acc_epoch"
         early_stopping_metric_mode = "max"
         dm = MNLIWithHANSDatamodule(
+            model_name=config.model_name,
             batch_size=config.batch_size,
             num_hans_train_examples=config.num_hans_train_examples,
             num_workers=config.num_workers,
@@ -95,6 +98,7 @@ def main(config):
         early_stopping_metric = "Valid/snli_validation/acc_epoch"
         early_stopping_metric_mode = "max"
         dm = SNLIDatamodule(
+            model_name=config.model_name,
             batch_size=config.batch_size,
             num_workers=config.num_workers,
             tokenizer_model_max_length=config.tokenizer_model_max_length,
@@ -124,20 +128,36 @@ def main(config):
     log.info(config)
 
     # 3. Prepare model
-    nlitransformer = BertForNLI(
-        hidden_dropout_prob=config.bert_hidden_dropout_prob,
-        attention_probs_dropout_prob=config.bert_attention_probs_dropout_prob,
-        classifier_dropout=config.bert_classifier_dropout,
-        focal_loss_gamma=config.focal_loss_gamma,
-        learning_rate=config.lr,
-        batch_size=config.batch_size,
-        weight_decay=config.weight_decay,
-        adam_epsilon=config.adam_epsilon,
-        warmup_steps=config.warmup_steps,
-        warmup_ratio=config.warmup_ratio,
-        scheduler_name=config.scheduler_name,
-        optimizer_name=config.optimizer_name,
-    )
+    if config.model_name == BERT_IDENTIFIER:
+        nlitransformer = BertForNLI(
+            hidden_dropout_prob=config.bert_hidden_dropout_prob,
+            attention_probs_dropout_prob=config.bert_attention_probs_dropout_prob,
+            classifier_dropout=config.bert_classifier_dropout,
+            focal_loss_gamma=config.focal_loss_gamma,
+            learning_rate=config.lr,
+            batch_size=config.batch_size,
+            weight_decay=config.weight_decay,
+            adam_epsilon=config.adam_epsilon,
+            warmup_steps=config.warmup_steps,
+            warmup_ratio=config.warmup_ratio,
+            scheduler_name=config.scheduler_name,
+            optimizer_name=config.optimizer_name,
+        )
+    elif config.model_name == T5_IDENTIFIER:
+        nlitransformer = T5ForNLI(
+            focal_loss_gamma=config.focal_loss_gamma,
+            learning_rate=config.lr,
+            batch_size=config.batch_size,
+            weight_decay=config.weight_decay,
+            adam_epsilon=config.adam_epsilon,
+            warmup_steps=config.warmup_steps,
+            warmup_ratio=config.warmup_ratio,
+            scheduler_name=config.scheduler_name,
+            optimizer_name=config.optimizer_name,
+        )
+    else:
+        raise ValueError(f"Model name '{config.model_name}' not recognized!")
+
     wandb_logger.watch(nlitransformer, log="all")
 
     # 4. Prepare callbacks
@@ -173,8 +193,8 @@ def main(config):
             num_sanity_val_steps=0,
 
             # ~~~ Uncomment for fast debugging ~~~ #
-            # limit_train_batches=50,
-            # limit_val_batches=50,
+            limit_train_batches=50,
+            limit_val_batches=50,
         )
     else:
         print("\n\n*** Using CPU ***\n\n")
