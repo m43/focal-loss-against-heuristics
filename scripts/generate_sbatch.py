@@ -185,7 +185,7 @@ sbatch_configurations = {
                 "run_name": f"{seed}.{{run_id}}_{model_name[:1].upper()}{n_hans:04d}_gamma-{gamma:.1f}_seed-{seed}",
             }
             # Varying
-            for n_hans in [100, 1000]
+            for n_hans in [100, 1000, 5000]
             for gamma in [0, 1.0, 2.0, 5.0]
             for seed in [72, 36, 180, 360, 54]
             # Fixed
