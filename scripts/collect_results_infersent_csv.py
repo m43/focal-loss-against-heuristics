@@ -1,7 +1,7 @@
 """
 Script that collects the results from CSV files from InferSent logs and generates the summaries we are interested in.
 
-Run like: `python -m scripts.collect_results_csv`
+Run like: `python -m scripts.collect_results_infersent_csv`
 """
 import argparse
 import os.path
@@ -9,6 +9,7 @@ from collections import namedtuple
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from scripts.collect_results_wandb import ConfigKey, process_results, TABLES
 from src.utils.util import nice_print, HORSE, ensure_dir, get_str_formatted_time
@@ -27,13 +28,73 @@ INFERSENT_DATASET_LABEL_MAPPING = {
     "hans_constituent": "hans_validation",
 }
 CONFIG_KEYS_TO_REPORT = [
-    ConfigKey('dataset', "Gamma"),
+    ConfigKey('dataset', "Dataset"),
     ConfigKey('gamma', "Gamma"),
-    ConfigKey('seed', "Gamma"),
+    ConfigKey('seed', "Seed"),
 ]
 RunCSVInfo = namedtuple("RunCSVInfo", ["dataset", "gamma", "seed", "path"])
 RUN_CSV_INFOS = [
-    RunCSVInfo("mnli", 0.0, 72, "/home/user72/Desktop/results.csv"),
+    # RunCSVInfo("mnli", 0.0, 72, "/home/user72/Desktop/results.csv"),
+    RunCSVInfo("mnli", 0.0, 180, "logs/infersent/dataset-MNLIMatched_gamma-0.0_seed-180.csv"),
+    RunCSVInfo("mnli", 0.0, 360, "logs/infersent/dataset-MNLIMatched_gamma-0.0_seed-360.csv"),
+    RunCSVInfo("mnli", 0.0, 36, "logs/infersent/dataset-MNLIMatched_gamma-0.0_seed-36.csv"),
+    RunCSVInfo("mnli", 0.0, 54, "logs/infersent/dataset-MNLIMatched_gamma-0.0_seed-54.csv"),
+    RunCSVInfo("mnli", 0.0, 72, "logs/infersent/dataset-MNLIMatched_gamma-0.0_seed-72.csv"),
+    RunCSVInfo("mnli", 0.5, 180, "logs/infersent/dataset-MNLIMatched_gamma-0.5_seed-180.csv"),
+    RunCSVInfo("mnli", 0.5, 360, "logs/infersent/dataset-MNLIMatched_gamma-0.5_seed-360.csv"),
+    RunCSVInfo("mnli", 0.5, 36, "logs/infersent/dataset-MNLIMatched_gamma-0.5_seed-36.csv"),
+    RunCSVInfo("mnli", 0.5, 54, "logs/infersent/dataset-MNLIMatched_gamma-0.5_seed-54.csv"),
+    RunCSVInfo("mnli", 0.5, 72, "logs/infersent/dataset-MNLIMatched_gamma-0.5_seed-72.csv"),
+    RunCSVInfo("mnli", 10.0, 180, "logs/infersent/dataset-MNLIMatched_gamma-10.0_seed-180.csv"),
+    RunCSVInfo("mnli", 10.0, 360, "logs/infersent/dataset-MNLIMatched_gamma-10.0_seed-360.csv"),
+    RunCSVInfo("mnli", 10.0, 36, "logs/infersent/dataset-MNLIMatched_gamma-10.0_seed-36.csv"),
+    RunCSVInfo("mnli", 10.0, 54, "logs/infersent/dataset-MNLIMatched_gamma-10.0_seed-54.csv"),
+    RunCSVInfo("mnli", 10.0, 72, "logs/infersent/dataset-MNLIMatched_gamma-10.0_seed-72.csv"),
+    RunCSVInfo("mnli", 1.0, 180, "logs/infersent/dataset-MNLIMatched_gamma-1.0_seed-180.csv"),
+    RunCSVInfo("mnli", 1.0, 360, "logs/infersent/dataset-MNLIMatched_gamma-1.0_seed-360.csv"),
+    RunCSVInfo("mnli", 1.0, 36, "logs/infersent/dataset-MNLIMatched_gamma-1.0_seed-36.csv"),
+    RunCSVInfo("mnli", 1.0, 54, "logs/infersent/dataset-MNLIMatched_gamma-1.0_seed-54.csv"),
+    RunCSVInfo("mnli", 1.0, 72, "logs/infersent/dataset-MNLIMatched_gamma-1.0_seed-72.csv"),
+    RunCSVInfo("mnli", 2.0, 180, "logs/infersent/dataset-MNLIMatched_gamma-2.0_seed-180.csv"),
+    RunCSVInfo("mnli", 2.0, 360, "logs/infersent/dataset-MNLIMatched_gamma-2.0_seed-360.csv"),
+    RunCSVInfo("mnli", 2.0, 36, "logs/infersent/dataset-MNLIMatched_gamma-2.0_seed-36.csv"),
+    RunCSVInfo("mnli", 2.0, 54, "logs/infersent/dataset-MNLIMatched_gamma-2.0_seed-54.csv"),
+    RunCSVInfo("mnli", 2.0, 72, "logs/infersent/dataset-MNLIMatched_gamma-2.0_seed-72.csv"),
+    RunCSVInfo("mnli", 5.0, 180, "logs/infersent/dataset-MNLIMatched_gamma-5.0_seed-180.csv"),
+    RunCSVInfo("mnli", 5.0, 360, "logs/infersent/dataset-MNLIMatched_gamma-5.0_seed-360.csv"),
+    RunCSVInfo("mnli", 5.0, 36, "logs/infersent/dataset-MNLIMatched_gamma-5.0_seed-36.csv"),
+    RunCSVInfo("mnli", 5.0, 54, "logs/infersent/dataset-MNLIMatched_gamma-5.0_seed-54.csv"),
+    RunCSVInfo("mnli", 5.0, 72, "logs/infersent/dataset-MNLIMatched_gamma-5.0_seed-72.csv"),
+    RunCSVInfo("snli", 0.0, 180, "logs/infersent/dataset-SNLI_gamma-0.0_seed-180.csv"),
+    RunCSVInfo("snli", 0.0, 360, "logs/infersent/dataset-SNLI_gamma-0.0_seed-360.csv"),
+    RunCSVInfo("snli", 0.0, 36, "logs/infersent/dataset-SNLI_gamma-0.0_seed-36.csv"),
+    RunCSVInfo("snli", 0.0, 54, "logs/infersent/dataset-SNLI_gamma-0.0_seed-54.csv"),
+    RunCSVInfo("snli", 0.0, 72, "logs/infersent/dataset-SNLI_gamma-0.0_seed-72.csv"),
+    RunCSVInfo("snli", 0.5, 180, "logs/infersent/dataset-SNLI_gamma-0.5_seed-180.csv"),
+    RunCSVInfo("snli", 0.5, 360, "logs/infersent/dataset-SNLI_gamma-0.5_seed-360.csv"),
+    RunCSVInfo("snli", 0.5, 36, "logs/infersent/dataset-SNLI_gamma-0.5_seed-36.csv"),
+    RunCSVInfo("snli", 0.5, 54, "logs/infersent/dataset-SNLI_gamma-0.5_seed-54.csv"),
+    RunCSVInfo("snli", 0.5, 72, "logs/infersent/dataset-SNLI_gamma-0.5_seed-72.csv"),
+    RunCSVInfo("snli", 10.0, 180, "logs/infersent/dataset-SNLI_gamma-10.0_seed-180.csv"),
+    RunCSVInfo("snli", 10.0, 360, "logs/infersent/dataset-SNLI_gamma-10.0_seed-360.csv"),
+    RunCSVInfo("snli", 10.0, 36, "logs/infersent/dataset-SNLI_gamma-10.0_seed-36.csv"),
+    RunCSVInfo("snli", 10.0, 54, "logs/infersent/dataset-SNLI_gamma-10.0_seed-54.csv"),
+    RunCSVInfo("snli", 10.0, 72, "logs/infersent/dataset-SNLI_gamma-10.0_seed-72.csv"),
+    RunCSVInfo("snli", 1.0, 180, "logs/infersent/dataset-SNLI_gamma-1.0_seed-180.csv"),
+    RunCSVInfo("snli", 1.0, 360, "logs/infersent/dataset-SNLI_gamma-1.0_seed-360.csv"),
+    RunCSVInfo("snli", 1.0, 36, "logs/infersent/dataset-SNLI_gamma-1.0_seed-36.csv"),
+    RunCSVInfo("snli", 1.0, 54, "logs/infersent/dataset-SNLI_gamma-1.0_seed-54.csv"),
+    RunCSVInfo("snli", 1.0, 72, "logs/infersent/dataset-SNLI_gamma-1.0_seed-72.csv"),
+    RunCSVInfo("snli", 2.0, 180, "logs/infersent/dataset-SNLI_gamma-2.0_seed-180.csv"),
+    RunCSVInfo("snli", 2.0, 360, "logs/infersent/dataset-SNLI_gamma-2.0_seed-360.csv"),
+    RunCSVInfo("snli", 2.0, 36, "logs/infersent/dataset-SNLI_gamma-2.0_seed-36.csv"),
+    RunCSVInfo("snli", 2.0, 54, "logs/infersent/dataset-SNLI_gamma-2.0_seed-54.csv"),
+    RunCSVInfo("snli", 2.0, 72, "logs/infersent/dataset-SNLI_gamma-2.0_seed-72.csv"),
+    RunCSVInfo("snli", 5.0, 180, "logs/infersent/dataset-SNLI_gamma-5.0_seed-180.csv"),
+    RunCSVInfo("snli", 5.0, 360, "logs/infersent/dataset-SNLI_gamma-5.0_seed-360.csv"),
+    RunCSVInfo("snli", 5.0, 36, "logs/infersent/dataset-SNLI_gamma-5.0_seed-36.csv"),
+    RunCSVInfo("snli", 5.0, 54, "logs/infersent/dataset-SNLI_gamma-5.0_seed-54.csv"),
+    RunCSVInfo("snli", 5.0, 72, "logs/infersent/dataset-SNLI_gamma-5.0_seed-72.csv"),
 ]
 
 if __name__ == '__main__':
@@ -44,7 +105,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     runs = {}
-    for run_csv_info in RUN_CSV_INFOS:
+    for run_csv_info in tqdm(RUN_CSV_INFOS):
         df = pd.read_csv(run_csv_info.path, sep=";")
         df.rename(columns={"epoch": "step", "dataset_label": "datapoint_dataset"}, inplace=True)
         df["ce_loss"] = -np.log(df.datapoint_true_prob)
