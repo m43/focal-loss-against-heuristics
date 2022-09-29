@@ -424,19 +424,30 @@ class BertForNLI(HuggingFaceTransformerForNLI):
 
         # Compute loss
         onehot_labels = F.one_hot(batch["labels"], num_classes=3).float()
+
         # **********************************************************************
         # HANS labels: entailment=0, non-entailment=1
         # MNLI, SNLI labels: entailment=0, neutral=1, contradiction=2
         # We map sum up neutral+contradiction scores to get non-entailment.
         # McCoy et al. (https://arxiv.org/abs/1902.01007) have done likewise when augmenting MNLI with HANS examples.
-        output.logits[:, 1] += (batch["dataset"] == DATASET_TO_INTEGER["hans_train"]) * output.logits[:, 2]
+        prob_raw = output.logits.softmax(-1)
+
+        prob_entailment = prob_raw[:, 0]
+        prob_neutral = prob_raw[:, 1] + (batch["dataset"] == DATASET_TO_INTEGER["hans_train"]) * prob_raw[:, 2]
+        prob_contradiction_raw = (batch["dataset"] != DATASET_TO_INTEGER["hans_train"]) * prob_raw[:, 2]
+        prob_contradiction_fix_nan = (batch["dataset"] == DATASET_TO_INTEGER["hans_train"]) * 1e-9
+        prob_contradiction = prob_contradiction_raw + prob_contradiction_fix_nan
+
+        prob = torch.stack([prob_entailment, prob_neutral, prob_contradiction], dim=-1)
+
+        logits = prob.log()
         # **********************************************************************
-        loss = self.loss_criterion(output.logits, onehot_labels)
+
+        loss = self.loss_criterion(logits, onehot_labels)
 
         # Compute prediction probability
         #  - prob: probability for individual classes
         #  - true_prob: probability for the correct class
-        prob = output.logits.softmax(-1).detach().clone()
         # **********************************************************************
         # HANS labels: entailment=0, non-entailment=1
         # MNLI, SNLI labels: entailment=0, neutral=1, contradiction=2
@@ -444,7 +455,7 @@ class BertForNLI(HuggingFaceTransformerForNLI):
         #   McCoy et al.: https://arxiv.org/abs/1902.01007
         #   Clark et al.: https://aclanthology.org/D19-1418/
         dataset = batch["dataset"][0].item()
-        if dataset in HANS_DATASET_INTEGER_IDENTIFIERS:
+        if dataset == DATASET_TO_INTEGER["hans_validation"]:
             # pred = output.logits.argmax(dim=-1)
             prob[:, 1] += prob[:, 2]
             prob = prob[:, :2]
