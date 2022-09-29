@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import wandb
+from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 from src.constants import INTEGER_TO_DATASET, DATASET_TO_INTEGER
@@ -108,32 +109,42 @@ CONFIG_KEYS_TO_REPORT: List[ConfigKey] = [
     ConfigKey('run_config/num_hans_train_examples', "HANS Examples in Train")
 ]
 
-ReportMetric = namedtuple("ReportMetric", ["pretty_name", "dataset", "aggregate_function", "key", "hardness"])
+ReportMetric = namedtuple("ReportMetric",
+                          ["pretty_name", "dataset", "aggregate_function", "key", "hardness", "hans_label",
+                           "hans_heuristic"])
 EarlyStoppingMetric = namedtuple("CheckpointMetric",
                                  ["pretty_name", "dataset", "aggregate_function", "key", "idxmin_or_idxmax"])
 EARLY_STOPPING_METRICS = [
     EarlyStoppingMetric("Last Step", "hans_validation", "max", "step", "idxmax"),
-    EarlyStoppingMetric("MNLI.V.M.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", "idxmax"),
-    EarlyStoppingMetric("MNLI.V.M.loss", "mnli_validation_matched", "mean", "datapoint_loss", "idxmin"),
-    EarlyStoppingMetric("MNLI.V.MM.acc", "mnli_validation_mismatched", "mean", "datapoint_true_pred", "idxmax"),
+    # EarlyStoppingMetric("MNLI.V.M.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", "idxmax"),
+    # EarlyStoppingMetric("MNLI.V.M.loss", "mnli_validation_matched", "mean", "datapoint_loss", "idxmin"),
+    # EarlyStoppingMetric("MNLI.V.MM.acc", "mnli_validation_mismatched", "mean", "datapoint_true_pred", "idxmax"),
     EarlyStoppingMetric("MNLI.V.MM.loss", "mnli_validation_mismatched", "mean", "datapoint_loss", "idxmin"),
-    EarlyStoppingMetric("SNLI.V.acc", "snli_validation", "mean", "datapoint_true_pred", "idxmax"),
-    EarlyStoppingMetric("SNLI.V.loss", "snli_validation", "mean", "datapoint_loss", "idxmin"),
+    # EarlyStoppingMetric("SNLI.V.acc", "snli_validation", "mean", "datapoint_true_pred", "idxmax"),
+    # EarlyStoppingMetric("SNLI.V.loss", "snli_validation", "mean", "datapoint_loss", "idxmin"),
 ]
 REPORT_METRICS = [
-    ReportMetric("HANS.valid.acc", "hans_validation", "mean", "datapoint_true_pred", None),
-    ReportMetric("MNLI.train.M.acc", "mnli_train", "mean", "datapoint_true_pred", None),
-    ReportMetric("MNLI.valid.M.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", None),
-    ReportMetric("MNLI.valid.M.EASY.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", "easy"),
-    ReportMetric("MNLI.valid.M.HARD.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", "hard"),
-    ReportMetric("MNLI.valid.MM.acc", "mnli_validation_mismatched", "mean", "datapoint_true_pred", None),
-    ReportMetric("MNLI.valid.MM.EASY.acc", "mnli_validation_mismatched", "mean", "datapoint_true_pred", "easy"),
-    ReportMetric("MNLI.valid.MM.HARD.acc", "mnli_validation_mismatched", "mean", "datapoint_true_pred", "hard"),
-    ReportMetric("SNLI.train.acc", "snli_train", "mean", "datapoint_true_pred", None),
-    ReportMetric("SNLI.valid.acc", "snli_validation", "mean", "datapoint_true_pred", None),
-    ReportMetric("SNLI.test.acc", "snli_test", "mean", "datapoint_true_pred", None),
-    ReportMetric("SNLI.test.EASY.acc", "snli_test", "mean", "datapoint_true_pred", "easy"),
-    ReportMetric("SNLI.test.HARD.acc", "snli_test", "mean", "datapoint_true_pred", "hard"),
+    ReportMetric("HANS.valid.acc", "hans_validation", "mean", "datapoint_true_pred", None, None, None),
+    # ReportMetric("HANS.valid.E.LO.acc", "hans_validation", "mean", "datapoint_true_pred", None, 0, "lexical_overlap"),
+    # ReportMetric("HANS.valid.E.S.acc", "hans_validation", "mean", "datapoint_true_pred", None, 0, "subsequence"),
+    # ReportMetric("HANS.valid.E.C.acc", "hans_validation", "mean", "datapoint_true_pred", None, 0, "constituent"),
+    # ReportMetric("HANS.valid.NE.LO.acc", "hans_validation", "mean", "datapoint_true_pred", None, 1, "lexical_overlap"),
+    # ReportMetric("HANS.valid.NE.S.acc", "hans_validation", "mean", "datapoint_true_pred", None, 1, "subsequence"),
+    # ReportMetric("HANS.valid.NE.C.acc", "hans_validation", "mean", "datapoint_true_pred", None, 1, "constituent"),
+    # ReportMetric("MNLI.train.M.acc", "mnli_train", "mean", "datapoint_true_pred", None, None, None),
+    ReportMetric("MNLI.valid.M.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", None, None, None),
+    # ReportMetric("MNLI.valid.M.EASY.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", "easy", None, None),
+    ReportMetric("MNLI.valid.M.HARD.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", "hard", None, None),
+    # ReportMetric("MNLI.valid.MM.acc", "mnli_validation_mismatched", "mean", "datapoint_true_pred", None, None, None),
+    # ReportMetric("MNLI.valid.MM.EASY.acc", "mnli_validation_mismatched", "mean", "datapoint_true_pred", "easy", None,
+    #              None),
+    # ReportMetric("MNLI.valid.MM.HARD.acc", "mnli_validation_mismatched", "mean", "datapoint_true_pred", "hard", None,
+    #              None),
+    # ReportMetric("SNLI.train.acc", "snli_train", "mean", "datapoint_true_pred", None, None, None),
+    # ReportMetric("SNLI.valid.acc", "snli_validation", "mean", "datapoint_true_pred", None, None, None),
+    # ReportMetric("SNLI.test.acc", "snli_test", "mean", "datapoint_true_pred", None, None, None),
+    # ReportMetric("SNLI.test.EASY.acc", "snli_test", "mean", "datapoint_true_pred", "easy", None, None),
+    # ReportMetric("SNLI.test.HARD.acc", "snli_test", "mean", "datapoint_true_pred", "hard", None, None),
 ]
 
 
@@ -142,6 +153,7 @@ def process_results(
         config_keys_to_report: List[ConfigKey] = CONFIG_KEYS_TO_REPORT,
         early_stopping_metrics: List[EarlyStoppingMetric] = EARLY_STOPPING_METRICS,
         report_metrics: List[ReportMetric] = REPORT_METRICS,
+        plots_dir_path: str = None,
 ):
     assert len(runs) > 0
     assert len(config_keys_to_report) > 0
@@ -181,10 +193,21 @@ def process_results(
 
             report_metrics_csv_str += f"{run_id};{esm_step}"
             for rm in report_metrics:
-                if rm.dataset == "hans_validation":
-                    # TODO heuristics
-                    pass
-                rm_df = df[(df.datapoint_dataset == rm.dataset) & (df.step == esm_step)]
+                rm_df = df[(df.step == esm_step) & (df.datapoint_dataset == rm.dataset)]
+
+                if not rm_df.empty and rm.dataset == "hans_validation" and rm.hans_heuristic is not None:
+                    assert rm.hans_label in [0, 1]
+                    rm_df = rm_df[(rm_df.datapoint_label == rm.hans_label)]
+                    if rm.hans_heuristic == "lexical_overlap":
+                        rm_df = rm_df[(rm_df.datapoint_idx < 10000)]
+                    elif rm.hans_heuristic == "subsequence":
+                        rm_df = rm_df[(rm_df.datapoint_idx >= 10000) & (rm_df.datapoint_idx < 20000)]
+                    elif rm.hans_heuristic == "constituent":
+                        rm_df = rm_df[(rm_df.datapoint_idx >= 20000)]
+                    else:
+                        raise ValueError()
+                    assert len(rm_df) == 5000
+
                 if rm_df.empty:
                     value = -1
                 else:
@@ -198,7 +221,175 @@ def process_results(
                 report_metrics_csv_str += f";{value}"
             report_metrics_csv_str += "\n"
 
-            # TODO possibly add plots here if `esm_step` is needed
+            if plots_dir_path is not None:
+                mnli_train_df = df[(df.step == esm_step) & (df.datapoint_dataset == "mnli_train")]
+                mnli_matched_df = df[(df.step == esm_step) & (df.datapoint_dataset == "mnli_validation_matched")]
+                gamma = run['config']['focal_loss_gamma']
+
+                ##################
+                # ~~~ Plot A ~~~ #
+                ##################
+
+                # # Train
+                # g = sns.displot(
+                #     mnli_matched_df,
+                #     x="datapoint_loss",
+                #     # hue="hardness",
+                #     bins=100,
+                #     log_scale=(True, False),
+                #     palette="deep",
+                #     kind="hist",
+                #     # row="gamma",
+                #     height=3,
+                #     aspect=3,
+                # )
+                # v_line_position = -0.5 ** gamma * np.log(0.5)
+                # g.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
+                #
+                # plot_id = f"{run_id:<70} -- {gamma:2.1f} -- Plot A -- MNLI.train.png"
+                # plot_id = plot_id.replace("epfl-optml/nli/", "")
+                # plt.savefig(os.path.join(plots_dir_path, plot_id))
+                # plt.close()
+
+                # TODO maybe validation?
+
+                # Test
+                xlim = (1e-12, 1e2)
+                g = sns.displot(
+                    mnli_matched_df,
+                    x="datapoint_loss",
+                    hue="hardness",
+                    bins=100,
+                    binrange=[np.log10(x) for x in xlim],
+                    log_scale=(True, False),
+                    palette="deep",
+                    kind="hist",
+                    # row="gamma",
+                    height=3,
+                    aspect=3,
+                )
+                v_line_position = -0.5 ** gamma * np.log(0.5)
+                g.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
+                plt.gca().set_xlim(xlim)
+
+                plot_id = f"{esm.pretty_name} -- Plot A -- MNLI.valid.M -- v1 Loss-- {gamma:2.1f} -- {run_id:<70}.pdf"
+                plot_id = plot_id.replace("epfl-optml/nli/", "")
+                plt.savefig(os.path.join(plots_dir_path, plot_id))
+                plt.close()
+
+                # Test, CE loss scale
+                xlim = (1e-5, 1e2)
+                g = sns.displot(
+                    mnli_matched_df,
+                    x="ce_loss",
+                    hue="hardness",
+                    bins=120,
+                    binrange=[np.log10(x) for x in xlim],
+                    log_scale=(True, False),
+                    palette="deep",
+                    kind="hist",
+                    # row="gamma",
+                    height=3,
+                    aspect=3,
+                )
+                v_line_position = -0.5 ** 0.0 * np.log(0.5)
+                g.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
+                plt.gca().set_xlim(xlim)
+
+                plot_id = f"{esm.pretty_name} -- Plot A -- MNLI.valid.M -- v2 CE_LOSS -- {gamma:2.1f} -- {run_id:<70}.pdf"
+                plot_id = plot_id.replace("epfl-optml/nli/", "")
+                plt.savefig(os.path.join(plots_dir_path, plot_id))
+                plt.close()
+
+                ##################
+                # ~~~ Plot B ~~~ #
+                ##################
+                # Test v1
+                xlim = (0, 1)
+                sns.displot(
+                    mnli_matched_df.rename(columns={"datapoint_true_prob": "probability of correct"}),
+                    x="probability of correct",
+                    hue="hardness",
+                    # col="gamma",
+                    bins=100,
+                    binrange=xlim,
+                    log_scale=(False, True),
+                    palette="deep",
+                    height=3,
+                    aspect=3,
+                )
+                plt.gca().set_xlim(xlim)
+
+                plot_id = f"{esm.pretty_name} -- Plot B -- MNLI.valid.M -- v1 -- {gamma:2.1f} -- {run_id:<70}.pdf"
+                plot_id = plot_id.replace("epfl-optml/nli/", "")
+                plt.savefig(os.path.join(plots_dir_path, plot_id))
+                plt.close()
+
+                ##################
+                # ~~~ Plot C ~~~ #
+                ##################
+                # Test v1
+                xlim = (5e-6, 5e1)
+                sns.displot(
+                    mnli_matched_df,
+                    x="datapoint_loss",
+                    hue="hardness",
+                    log_scale=(True, False),
+                    linewidth=3,
+                    palette="deep",
+                    kind="ecdf",
+                    # row="gamma",
+                    height=3,
+                    aspect=3,
+                )
+                plt.gca().set_xlim(xlim)
+
+                plot_id = f"{esm.pretty_name} -- Plot C -- MNLI.valid.M -- v1 ECDF Log-Lin -- {gamma:2.1f} -- {run_id:<70}.pdf"
+                plot_id = plot_id.replace("epfl-optml/nli/", "")
+                plt.savefig(os.path.join(plots_dir_path, plot_id))
+                plt.close()
+
+                # Test v2
+                xlim = (-0.1, 12)
+                sns.displot(
+                    mnli_matched_df,
+                    x="datapoint_loss",
+                    hue="hardness",
+                    log_scale=(False, False),
+                    linewidth=3,
+                    palette="deep",
+                    kind="ecdf",
+                    # row="gamma",
+                    height=3,
+                    aspect=3,
+                )
+                plt.gca().set_xlim(xlim)
+
+                plot_id = f"{esm.pretty_name} -- Plot C -- MNLI.valid.M -- v2 ECDF Lin-Lin -- {gamma:2.1f} -- {run_id:<70}.pdf"
+                plot_id = plot_id.replace("epfl-optml/nli/", "")
+                plt.savefig(os.path.join(plots_dir_path, plot_id))
+                plt.close()
+
+                # Test v3
+                xlim = (-0.1, 12)
+                sns.displot(
+                    mnli_matched_df,
+                    x="ce_loss",
+                    hue="hardness",
+                    log_scale=(False, False),
+                    linewidth=3,
+                    palette="deep",
+                    kind="ecdf",
+                    # row="gamma",
+                    height=3,
+                    aspect=3,
+                )
+                plt.gca().set_xlim(xlim)
+
+                plot_id = f"{esm.pretty_name} -- Plot C -- MNLI.valid.M -- v3 CE-LOSS ECDF Lin-Lin -- {gamma:2.1f} -- {run_id:<70}.pdf"
+                plot_id = plot_id.replace("epfl-optml/nli/", "")
+                plt.savefig(os.path.join(plots_dir_path, plot_id))
+                plt.close()
 
         results[f"report_metric.earlystopping_on_{esm.pretty_name}.csv"] = report_metrics_csv_str
         print(results[f"report_metric.earlystopping_on_{esm.pretty_name}.csv"], "\n")
@@ -242,7 +433,8 @@ TABLES = {
 }
 
 RUN_PATHS = [
-    "epfl-optml/nli/S1.01.A_e-03_model-bert_dataset-mnli_gamma-0.0_seed-72_09.25_01.53.02",
+    ## S01
+    # "epfl-optml/nli/S1.01.A_e-03_model-bert_dataset-mnli_gamma-0.0_seed-72_09.25_01.53.02",
     # "epfl-optml/nli/S1.01.B_e-04__model-bert_dataset-mnli_gamma-0.0_seed-24_09.25_01.53.02",
     # "epfl-optml/nli/S1.01.C_e-10__model-bert_dataset-mnli_gamma-0.0_seed-24_09.25_01.53.02",
     # "epfl-optml/nli/S1.01.C_e-10__model-bert_dataset-mnli_gamma-0.0_seed-72_09.25_01.53.02",
@@ -261,15 +453,118 @@ RUN_PATHS = [
     # "epfl-optml/nli/S1.10_model-bert_dataset-snli_gamma-2.0_seed-72_09.25_02.57.08",
     # "epfl-optml/nli/S1.11_model-bert_dataset-snli_gamma-5.0_seed-72_09.25_03.02.37",
     # "epfl-optml/nli/S1.12_model-bert_dataset-snli_gamma-10.0_seed-72_09.25_03.16.14",
+    ## S02
+    "epfl-optml/nli/S2.02_model-bert_dataset-mnli_gamma-0.0_seed-36_09.26_06.48.33",
+    # "epfl-optml/nli/S2.03_model-bert_dataset-mnli_gamma-0.0_seed-180_09.26_03.37.35",
+    # "epfl-optml/nli/S2.04_model-bert_dataset-mnli_gamma-0.0_seed-360_09.26_05.57.53",
+    # "epfl-optml/nli/S2.05_model-bert_dataset-mnli_gamma-0.0_seed-54_09.26_07.10.18",
+    # "epfl-optml/nli/S2.06_model-bert_dataset-mnli_gamma-0.5_seed-72_09.26_07.54.36",
+    # "epfl-optml/nli/S2.07_model-bert_dataset-mnli_gamma-0.5_seed-36_09.26_06.48.33",
+    # "epfl-optml/nli/S2.08_model-bert_dataset-mnli_gamma-0.5_seed-180_09.26_03.37.35",
+    # "epfl-optml/nli/S2.09_model-bert_dataset-mnli_gamma-0.5_seed-360_09.26_05.57.53",
+    # "epfl-optml/nli/S2.10_model-bert_dataset-mnli_gamma-0.5_seed-54_09.26_07.10.26",
+    # "epfl-optml/nli/S2.11_model-bert_dataset-mnli_gamma-1.0_seed-72_09.26_07.54.53",
+    # "epfl-optml/nli/S2.12_model-bert_dataset-mnli_gamma-1.0_seed-36_09.26_06.49.02",
+    # "epfl-optml/nli/S2.13_model-bert_dataset-mnli_gamma-1.0_seed-180_09.26_03.37.35",
+    # "epfl-optml/nli/S2.14_model-bert_dataset-mnli_gamma-1.0_seed-360_09.26_05.58.26",
+    # "epfl-optml/nli/S2.15_model-bert_dataset-mnli_gamma-1.0_seed-54_09.26_07.10.46",
+    # "epfl-optml/nli/S2.16_model-bert_dataset-mnli_gamma-2.0_seed-72_09.26_08.30.39",
+    # "epfl-optml/nli/S2.17_model-bert_dataset-mnli_gamma-2.0_seed-36_09.26_06.49.02",
+    # "epfl-optml/nli/S2.18_model-bert_dataset-mnli_gamma-2.0_seed-180_09.26_03.38.48",
+    # "epfl-optml/nli/S2.19_model-bert_dataset-mnli_gamma-2.0_seed-360_09.26_05.58.26",
+    # "epfl-optml/nli/S2.20_model-bert_dataset-mnli_gamma-2.0_seed-54_09.26_07.12.50",
+    # "epfl-optml/nli/S2.21_model-bert_dataset-mnli_gamma-5.0_seed-72_09.26_08.36.02",
+    # "epfl-optml/nli/S2.22_model-bert_dataset-mnli_gamma-5.0_seed-36_09.26_06.51.39",
+    # "epfl-optml/nli/S2.23_model-bert_dataset-mnli_gamma-5.0_seed-180_09.26_03.40.47",
+    # "epfl-optml/nli/S2.24_model-bert_dataset-mnli_gamma-5.0_seed-360_09.26_06.23.57",
+    # "epfl-optml/nli/S2.25_model-bert_dataset-mnli_gamma-5.0_seed-54_09.26_07.13.40",
+    # "epfl-optml/nli/S2.26_model-bert_dataset-mnli_gamma-10.0_seed-72_09.26_08.36.02",
+    # "epfl-optml/nli/S2.27_model-bert_dataset-mnli_gamma-10.0_seed-36_09.26_06.59.50",
+    # "epfl-optml/nli/S2.28_model-bert_dataset-mnli_gamma-10.0_seed-180_09.26_03.41.34",
+    # "epfl-optml/nli/S2.29_model-bert_dataset-mnli_gamma-10.0_seed-360_09.26_06.24.42",
+    # "epfl-optml/nli/S2.30_model-bert_dataset-mnli_gamma-10.0_seed-54_09.26_07.13.54",
+    # "epfl-optml/nli/S2.31_model-bert_dataset-snli_gamma-0.0_seed-72_09.26_09.06.20",
+    # "epfl-optml/nli/S2.32_model-bert_dataset-snli_gamma-0.0_seed-36_09.26_06.59.50",
+    # "epfl-optml/nli/S2.33_model-bert_dataset-snli_gamma-0.0_seed-180_09.26_03.46.05",
+    # "epfl-optml/nli/S2.34_model-bert_dataset-snli_gamma-0.0_seed-360_09.26_06.24.42",
+    # "epfl-optml/nli/S2.35_model-bert_dataset-snli_gamma-0.0_seed-54_09.26_07.15.18",
+    # "epfl-optml/nli/S2.36_model-bert_dataset-snli_gamma-0.5_seed-72_09.26_13.55.34",
+    # "epfl-optml/nli/S2.37_model-bert_dataset-snli_gamma-0.5_seed-36_09.26_07.02.03",
+    # "epfl-optml/nli/S2.38_model-bert_dataset-snli_gamma-0.5_seed-180_09.26_05.08.03",
+    # "epfl-optml/nli/S2.39_model-bert_dataset-snli_gamma-0.5_seed-360_09.26_06.29.29",
+    # "epfl-optml/nli/S2.40_model-bert_dataset-snli_gamma-0.5_seed-54_09.26_07.16.13",
+    # "epfl-optml/nli/S2.41_model-bert_dataset-snli_gamma-1.0_seed-72_09.26_14.00.01",
+    # "epfl-optml/nli/S2.42_model-bert_dataset-snli_gamma-1.0_seed-36_09.26_07.02.03",
+    # "epfl-optml/nli/S2.43_model-bert_dataset-snli_gamma-1.0_seed-180_09.26_05.08.03",
+    # "epfl-optml/nli/S2.44_model-bert_dataset-snli_gamma-1.0_seed-360_09.26_06.48.11",
+    # "epfl-optml/nli/S2.45_model-bert_dataset-snli_gamma-1.0_seed-54_09.26_07.17.57",
+    # "epfl-optml/nli/S2.46_model-bert_dataset-snli_gamma-2.0_seed-72_09.26_14.07.33",
+    # "epfl-optml/nli/S2.47_model-bert_dataset-snli_gamma-2.0_seed-36_09.26_07.02.56",
+    # "epfl-optml/nli/S2.48_model-bert_dataset-snli_gamma-2.0_seed-180_09.26_05.12.32",
+    # "epfl-optml/nli/S2.49_model-bert_dataset-snli_gamma-2.0_seed-360_09.26_06.48.11",
+    # "epfl-optml/nli/S2.50_model-bert_dataset-snli_gamma-2.0_seed-54_09.26_07.20.21",
+    # "epfl-optml/nli/S2.51_model-bert_dataset-snli_gamma-5.0_seed-72_09.26_14.19.16",
+    # "epfl-optml/nli/S2.52_model-bert_dataset-snli_gamma-5.0_seed-36_09.26_07.03.58",
+    # "epfl-optml/nli/S2.53_model-bert_dataset-snli_gamma-5.0_seed-180_09.26_05.12.32",
+    # "epfl-optml/nli/S2.54_model-bert_dataset-snli_gamma-5.0_seed-360_09.26_06.48.24",
+    # "epfl-optml/nli/S2.55_model-bert_dataset-snli_gamma-5.0_seed-54_09.26_07.31.04",
+    # "epfl-optml/nli/S2.56_model-bert_dataset-snli_gamma-10.0_seed-72_09.26_14.19.18",
+    # "epfl-optml/nli/S2.57_model-bert_dataset-snli_gamma-10.0_seed-36_09.26_07.10.00",
+    # "epfl-optml/nli/S2.58_model-bert_dataset-snli_gamma-10.0_seed-180_09.26_05.41.10",
+    # "epfl-optml/nli/S2.59_model-bert_dataset-snli_gamma-10.0_seed-360_09.26_06.48.24",
+    # "epfl-optml/nli/S2.60_model-bert_dataset-snli_gamma-10.0_seed-54_09.26_07.41.02",
+    ## S03
+    # "epfl-optml/nli/S3.01_model-bert_nhans-100_gamma-0.0_seed-72_09.28_13.56.33",
+    # "epfl-optml/nli/S3.02_model-bert_nhans-100_gamma-0.0_seed-36_09.28_06.21.59",
+    # "epfl-optml/nli/S3.03_model-bert_nhans-100_gamma-0.0_seed-180_09.28_01.33.07",
+    # "epfl-optml/nli/S3.04_model-bert_nhans-100_gamma-0.0_seed-360_09.28_04.50.36",
+    # "epfl-optml/nli/S3.05_model-bert_nhans-100_gamma-0.0_seed-54_09.28_07.36.20",
+    # "epfl-optml/nli/S3.06_model-bert_nhans-100_gamma-1.0_seed-72_09.28_13.56.15",
+    # "epfl-optml/nli/S3.07_model-bert_nhans-100_gamma-1.0_seed-36_09.28_06.24.24",
+    # "epfl-optml/nli/S3.08_model-bert_nhans-100_gamma-1.0_seed-180_09.28_01.33.07",
+    # "epfl-optml/nli/S3.09_model-bert_nhans-100_gamma-1.0_seed-360_09.28_04.50.36",
+    # "epfl-optml/nli/S3.10_model-bert_nhans-100_gamma-1.0_seed-54_09.28_07.49.34",
+    # "epfl-optml/nli/S3.11_model-bert_nhans-100_gamma-2.0_seed-72_09.28_13.58.43",
+    # "epfl-optml/nli/S3.12_model-bert_nhans-100_gamma-2.0_seed-36_09.28_06.38.38",
+    # "epfl-optml/nli/S3.13_model-bert_nhans-100_gamma-2.0_seed-180_09.28_01.57.16",
+    # "epfl-optml/nli/S3.14_model-bert_nhans-100_gamma-2.0_seed-360_09.28_05.09.04",
+    # "epfl-optml/nli/S3.15_model-bert_nhans-100_gamma-2.0_seed-54_09.28_07.59.55",
+    # "epfl-optml/nli/S3.16_model-bert_nhans-100_gamma-5.0_seed-72_09.28_14.00.15",
+    # # 17
+    # # 18
+    # "epfl-optml/nli/S3.19_model-bert_nhans-100_gamma-5.0_seed-360_09.28_05.13.51",
+    # "epfl-optml/nli/S3.20_model-bert_nhans-100_gamma-5.0_seed-54_09.28_08.01.23",
+    # "epfl-optml/nli/S3.21_model-bert_nhans-1000_gamma-0.0_seed-72_09.28_14.06.45",
+    # "epfl-optml/nli/S3.22_model-bert_nhans-1000_gamma-0.0_seed-36_09.28_07.01.06",
+    # "epfl-optml/nli/S3.23_model-bert_nhans-1000_gamma-0.0_seed-180_09.28_01.58.09",
+    # "epfl-optml/nli/S3.24_model-bert_nhans-1000_gamma-0.0_seed-360_09.28_05.15.53",
+    # "epfl-optml/nli/S3.25_model-bert_nhans-1000_gamma-0.0_seed-54_09.28_08.01.23",
+    # "epfl-optml/nli/S3.26_model-bert_nhans-1000_gamma-1.0_seed-72_09.28_14.06.46",
+    # "epfl-optml/nli/S3.27_model-bert_nhans-1000_gamma-1.0_seed-36_09.28_07.01.42",
+    # "epfl-optml/nli/S3.28_model-bert_nhans-1000_gamma-1.0_seed-180_09.28_01.58.14",
+    # "epfl-optml/nli/S3.29_model-bert_nhans-1000_gamma-1.0_seed-360_09.28_05.35.24",
+    # "epfl-optml/nli/S3.30_model-bert_nhans-1000_gamma-1.0_seed-54_09.28_08.03.53",
+    # "epfl-optml/nli/S3.31_model-bert_nhans-1000_gamma-2.0_seed-72_09.28_14.09.44",
+    # "epfl-optml/nli/S3.32_model-bert_nhans-1000_gamma-2.0_seed-36_09.28_07.28.12",
+    # "epfl-optml/nli/S3.33_model-bert_nhans-1000_gamma-2.0_seed-180_09.28_01.58.47",
+    # "epfl-optml/nli/S3.34_model-bert_nhans-1000_gamma-2.0_seed-360_09.28_06.03.32",
+    # "epfl-optml/nli/S3.35_model-bert_nhans-1000_gamma-2.0_seed-54_09.28_08.08.30",
+    # "epfl-optml/nli/S3.36_model-bert_nhans-1000_gamma-5.0_seed-72_09.28_14.09.44",
+    # "epfl-optml/nli/S3.37_model-bert_nhans-1000_gamma-5.0_seed-36_09.28_07.30.50",
+    # "epfl-optml/nli/S3.38_model-bert_nhans-1000_gamma-5.0_seed-180_09.28_03.56.56",
+    # "epfl-optml/nli/S3.39_model-bert_nhans-1000_gamma-5.0_seed-360_09.28_06.12.37",
+    # "epfl-optml/nli/S3.40_model-bert_nhans-1000_gamma-5.0_seed-54_09.28_13.55.24",
+    # "epfl-optml/nli/S3.41_model-bert_nhans-5000_gamma-0.0_seed-72_09.28_14.11.15",
+    # # 42-45
 ]
 
 if __name__ == '__main__':
     nice_print(HORSE)
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cached_runs_pickle_path', type=str, default="logs/cached_runs.pkl",
+    parser.add_argument('--cached_runs_pickle_path', type=str, default="logs/cached_runs_s02_plots.pkl",
                         help="If not None and if pickle file exists,"
                              "load the runs from the pickle file instead of querying wandb again.")
-    parser.add_argument('--results_dir', type=str, default="logs/S01.results",
+    parser.add_argument('--results_dir', type=str, default="logs/S02.plots",
                         help="Where to save the computed results")
     args = parser.parse_args()
 
@@ -288,11 +583,16 @@ if __name__ == '__main__':
 
     for run_path, run in runs.items():
         df = pd.concat(run["dataframes"])
+        del (run["dataframes"])
+
         df["ce_loss"] = df["datapoint_true_prob"].apply(lambda x: -np.log(x))
         df["datapoint_dataset"] = df["datapoint_dataset"].apply(lambda x: INTEGER_TO_DATASET[x])
+        run["dataframe"] = df
 
     ensure_dir(args.results_dir)
-    results = process_results(runs)
+    plots_dir = os.path.join(args.results_dir, f"plots")
+    ensure_dir(plots_dir)
+    results = process_results(runs, plots_dir_path=plots_dir)
 
     for k, v in results.items():
         with open(os.path.join(args.results_dir, k), "w") as f:
@@ -306,6 +606,10 @@ if __name__ == '__main__':
     print("Done.")
 
 '''
+******************
+*** DEPRECATED ***
+******************
+
 def preprocess_table(df, hardness=None, sort_by_loss=False):
     max_step = df.step.max()
     df = df[df.step == max_step]
