@@ -17,10 +17,14 @@ import wandb
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-from src.constants import INTEGER_TO_DATASET, DATASET_TO_INTEGER
+from src.constants import INTEGER_TO_DATASET, DATASET_TO_INTEGER, INTEGER_TO_HEURISTIC
 from src.utils.util import nice_print, HORSE, ensure_dir, get_str_formatted_time
 
 sns.set_theme(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
+sns.set_style("ticks")
+
+plt.rc('font', **{'family': 'serif', 'serif': ['Computer Modern Roman']})
+plt.rc('text', usetex=True)
 
 
 def load_all_wandb_tables_with_given_artifact_string(
@@ -124,6 +128,7 @@ EARLY_STOPPING_METRICS = [
     # EarlyStoppingMetric("SNLI.V.loss", "snli_validation", "mean", "datapoint_loss", "idxmin"),
 ]
 REPORT_METRICS = [
+    ReportMetric("MNLI.train.M.acc", "mnli_train", "mean", "datapoint_true_pred", None, None, None),
     ReportMetric("HANS.valid.acc", "hans_validation", "mean", "datapoint_true_pred", None, None, None),
     # ReportMetric("HANS.valid.E.LO.acc", "hans_validation", "mean", "datapoint_true_pred", None, 0, "lexical_overlap"),
     # ReportMetric("HANS.valid.E.S.acc", "hans_validation", "mean", "datapoint_true_pred", None, 0, "subsequence"),
@@ -131,7 +136,6 @@ REPORT_METRICS = [
     # ReportMetric("HANS.valid.NE.LO.acc", "hans_validation", "mean", "datapoint_true_pred", None, 1, "lexical_overlap"),
     # ReportMetric("HANS.valid.NE.S.acc", "hans_validation", "mean", "datapoint_true_pred", None, 1, "subsequence"),
     # ReportMetric("HANS.valid.NE.C.acc", "hans_validation", "mean", "datapoint_true_pred", None, 1, "constituent"),
-    # ReportMetric("MNLI.train.M.acc", "mnli_train", "mean", "datapoint_true_pred", None, None, None),
     ReportMetric("MNLI.valid.M.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", None, None, None),
     # ReportMetric("MNLI.valid.M.EASY.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", "easy", None, None),
     ReportMetric("MNLI.valid.M.HARD.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", "hard", None, None),
@@ -191,6 +195,10 @@ def process_results(
             esm_df = esm_df[["__step", esm.key]]
             esm_step = esm_df.groupby("__step").agg(esm.aggregate_function)[esm.key].apply(esm.idxmin_or_idxmax)
 
+            # TODO train does not have the same step as validation so the df will be empty
+            # _steps = mnli_train_df.step.unique()
+            # esm_step_train = _steps[_steps >= esm_step].min()
+
             report_metrics_csv_str += f"{run_id};{esm_step}"
             for rm in report_metrics:
                 rm_df = df[(df.step == esm_step) & (df.datapoint_dataset == rm.dataset)]
@@ -222,40 +230,31 @@ def process_results(
             report_metrics_csv_str += "\n"
 
             if plots_dir_path is not None:
-                mnli_train_df = df[(df.step == esm_step) & (df.datapoint_dataset == "mnli_train")]
-                mnli_matched_df = df[(df.step == esm_step) & (df.datapoint_dataset == "mnli_validation_matched")]
                 gamma = run['config']['focal_loss_gamma']
+
+                mnli_train_df = df[(df.datapoint_dataset == "mnli_train")]
+                _steps = mnli_train_df.step.unique()
+                esm_step_train = _steps[_steps >= esm_step].min()
+                mnli_train_df = mnli_train_df[mnli_train_df.step == esm_step_train].copy()
+
+                mnli_matched_df = df[(df.step == esm_step) & (df.datapoint_dataset == "mnli_validation_matched")].copy()
+
+                hans_train_df = df[(df.step == esm_step_train) & (df.datapoint_dataset == "hans_train")].copy()
+                hans_validation_df = df[(df.step == esm_step) & (df.datapoint_dataset == "hans_validation")].copy()
+                for hdf in [hans_train_df, hans_validation_df]:
+                    hdf["label"] = hdf.datapoint_label.apply(lambda l: "entailment" if l == 0 else "non-entailment")
+                    hdf["heuristic"] = hdf.datapoint_heuristic.apply(lambda h: INTEGER_TO_HEURISTIC[h])
+
+                for _df in [mnli_train_df, mnli_matched_df, hans_train_df, hans_validation_df]:
+                    hardness_to_str = {None: "NA", 0: "false", 1: "true"}
+                    _df.hardness = _df.hardness.apply(lambda x: hardness_to_str[x])
 
                 ##################
                 # ~~~ Plot A ~~~ #
                 ##################
-
-                # # Train
-                # g = sns.displot(
-                #     mnli_matched_df,
-                #     x="datapoint_loss",
-                #     # hue="hardness",
-                #     bins=100,
-                #     log_scale=(True, False),
-                #     palette="deep",
-                #     kind="hist",
-                #     # row="gamma",
-                #     height=3,
-                #     aspect=3,
-                # )
-                # v_line_position = -0.5 ** gamma * np.log(0.5)
-                # g.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
-                #
-                # plot_id = f"{run_id:<70} -- {gamma:2.1f} -- Plot A -- MNLI.train.png"
-                # plot_id = plot_id.replace("epfl-optml/nli/", "")
-                # plt.savefig(os.path.join(plots_dir_path, plot_id))
-                # plt.close()
-
-                # TODO maybe validation?
-
                 # Test
-                xlim = (1e-12, 1e2)
-                g = sns.displot(
+                xlim = (1e-5, 1e2)
+                facet_grid = sns.displot(
                     mnli_matched_df,
                     x="datapoint_loss",
                     hue="hardness",
@@ -265,11 +264,14 @@ def process_results(
                     palette="deep",
                     kind="hist",
                     # row="gamma",
-                    height=3,
-                    aspect=3,
+                    height=2.0,
+                    aspect=3.5,
                 )
+                facet_grid.set_axis_labels(f"loss, $\gamma={gamma}$", "count")
                 v_line_position = -0.5 ** gamma * np.log(0.5)
-                g.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
+                facet_grid.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
+                v_line_position = -0.5 ** gamma * np.log(1 / 3)
+                facet_grid.axes.flat[0].axvline(x=v_line_position, color='b', linestyle=':')
                 plt.gca().set_xlim(xlim)
 
                 plot_id = f"{esm.pretty_name} -- Plot A -- MNLI.valid.M -- v1 Loss-- {gamma:2.1f} -- {run_id:<70}.pdf"
@@ -279,7 +281,7 @@ def process_results(
 
                 # Test, CE loss scale
                 xlim = (1e-5, 1e2)
-                g = sns.displot(
+                facet_grid = sns.displot(
                     mnli_matched_df,
                     x="ce_loss",
                     hue="hardness",
@@ -289,14 +291,123 @@ def process_results(
                     palette="deep",
                     kind="hist",
                     # row="gamma",
-                    height=3,
-                    aspect=3,
+                    height=2.0,
+                    aspect=3.5,
                 )
+                facet_grid.set_axis_labels(f"normalized loss, $\gamma={gamma}$", "proportion")
                 v_line_position = -0.5 ** 0.0 * np.log(0.5)
-                g.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
+                facet_grid.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
+                v_line_position = -0.5 ** 0.0 * np.log(1 / 3)
+                facet_grid.axes.flat[0].axvline(x=v_line_position, color='b', linestyle=':')
                 plt.gca().set_xlim(xlim)
 
                 plot_id = f"{esm.pretty_name} -- Plot A -- MNLI.valid.M -- v2 CE_LOSS -- {gamma:2.1f} -- {run_id:<70}.pdf"
+                plot_id = plot_id.replace("epfl-optml/nli/", "")
+                plt.savefig(os.path.join(plots_dir_path, plot_id))
+                plt.close()
+
+                # Train
+                xlim = (1e-5, 1e2)
+                facet_grid = sns.displot(
+                    mnli_train_df,
+                    x="datapoint_loss",
+                    bins=100,
+                    binrange=[np.log10(x) for x in xlim],
+                    log_scale=(True, False),
+                    palette="deep",
+                    kind="hist",
+                    height=2.0,
+                    aspect=3.5,
+                )
+                facet_grid.set_axis_labels(f"loss, $\gamma={gamma}$", "count")
+                v_line_position = -0.5 ** gamma * np.log(0.5)
+                facet_grid.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
+                v_line_position = -0.5 ** gamma * np.log(1 / 3)
+                facet_grid.axes.flat[0].axvline(x=v_line_position, color='b', linestyle=':')
+                plt.gca().set_xlim(xlim)
+
+                plot_id = f"{esm.pretty_name} -- Plot A -- MNLI.train -- v1 Loss-- {gamma:2.1f} -- {run_id:<70}.pdf"
+                plot_id = plot_id.replace("epfl-optml/nli/", "")
+                plt.savefig(os.path.join(plots_dir_path, plot_id))
+                plt.close()
+
+                # Train, HANS all
+                xlim = (1e-5, 1e2)
+                facet_grid = sns.displot(
+                    hans_train_df,
+                    x="datapoint_loss",
+                    bins=50,
+                    hue="label",
+                    binrange=[np.log10(x) for x in xlim],
+                    log_scale=(True, False),
+                    palette="deep",
+                    kind="hist",
+                    height=2.0,
+                    aspect=3.5,
+                )
+                facet_grid.set_axis_labels(f"loss, $\gamma={gamma}$", "count")
+                v_line_position = -0.5 ** gamma * np.log(0.5)
+                facet_grid.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
+                v_line_position = -0.5 ** gamma * np.log(1 / 3)
+                facet_grid.axes.flat[0].axvline(x=v_line_position, color='b', linestyle=':')
+                plt.gca().set_xlim(xlim)
+
+                plot_id = f"{esm.pretty_name} -- Plot A -- HANS.train -- v1 Loss for all -- {gamma:2.1f} -- {run_id:<70}.pdf"
+                plot_id = plot_id.replace("epfl-optml/nli/", "")
+                plt.savefig(os.path.join(plots_dir_path, plot_id))
+                plt.close()
+
+                # Test, HANS all
+                xlim = (1e-5, 1e2)
+                facet_grid = sns.displot(
+                    hans_validation_df,
+                    x="datapoint_loss",
+                    bins=100,
+                    hue="label",
+                    binrange=[np.log10(x) for x in xlim],
+                    log_scale=(True, False),
+                    palette="deep",
+                    kind="hist",
+                    height=2.0,
+                    aspect=3.5,
+                )
+                facet_grid.set_axis_labels(f"loss, $\gamma={gamma}$", "count")
+                v_line_position = -0.5 ** gamma * np.log(0.5)
+                facet_grid.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
+                v_line_position = -0.5 ** gamma * np.log(1 / 3)
+                facet_grid.axes.flat[0].axvline(x=v_line_position, color='b', linestyle=':')
+                plt.gca().set_xlim(xlim)
+
+                plot_id = f"{esm.pretty_name} -- Plot A -- HANS.validation -- v1 Loss for all -- {gamma:2.1f} -- {run_id:<70}.pdf"
+                plot_id = plot_id.replace("epfl-optml/nli/", "")
+                plt.savefig(os.path.join(plots_dir_path, plot_id))
+                plt.close()
+
+                # Test, HANS per heuristic
+                xlim = (1e-5, 1e2)
+                facet_grid = sns.displot(
+                    hans_validation_df,
+                    x="datapoint_loss",
+                    bins=100,
+                    col="heuristic",
+                    hue="label",
+                    binrange=[np.log10(x) for x in xlim],
+                    log_scale=(True, False),
+                    palette="deep",
+                    kind="hist",
+                    height=2.0,
+                    aspect=2.0,
+                )
+                facet_grid.set_axis_labels(f"loss, $\gamma={gamma}$", "count")
+                v_line_position = -0.5 ** gamma * np.log(0.5)
+                for ax in facet_grid.axes.flat:
+                    ax.axvline(x=v_line_position, color='r', linestyle=':')
+                v_line_position = -0.5 ** gamma * np.log(1 / 3)
+                for ax in facet_grid.axes.flat:
+                    ax.axvline(x=v_line_position, color='b', linestyle=':')
+                plt.gca().set_xlim(xlim)
+
+                plot_id = f"{esm.pretty_name} -- Plot A -- HANS.validation -- v2 Loss per heuristic -- {gamma:2.1f} -- {run_id:<70}.pdf"
                 plot_id = plot_id.replace("epfl-optml/nli/", "")
                 plt.savefig(os.path.join(plots_dir_path, plot_id))
                 plt.close()
@@ -305,22 +416,105 @@ def process_results(
                 # ~~~ Plot B ~~~ #
                 ##################
                 # Test v1
-                xlim = (0, 1)
-                sns.displot(
-                    mnli_matched_df.rename(columns={"datapoint_true_prob": "probability of correct"}),
-                    x="probability of correct",
+                xlim = (-0.01, 1.01)
+                facet_grid = sns.displot(
+                    mnli_matched_df,
+                    x="datapoint_true_prob",
                     hue="hardness",
                     # col="gamma",
                     bins=100,
                     binrange=xlim,
                     log_scale=(False, True),
                     palette="deep",
-                    height=3,
-                    aspect=3,
+                    height=2.0,
+                    aspect=3.5,
                 )
+                facet_grid.set_axis_labels(f"probability of correct classification, $\gamma={gamma}$", "count")
+                # v_line_position = 0.5
+                # facet_grid.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
+                # v_line_position = 1 / 3
+                # facet_grid.axes.flat[0].axvline(x=v_line_position, color='b', linestyle=':')
                 plt.gca().set_xlim(xlim)
 
                 plot_id = f"{esm.pretty_name} -- Plot B -- MNLI.valid.M -- v1 -- {gamma:2.1f} -- {run_id:<70}.pdf"
+                plot_id = plot_id.replace("epfl-optml/nli/", "")
+                plt.savefig(os.path.join(plots_dir_path, plot_id))
+                plt.close()
+
+                # Train, HANS all
+                xlim = (-0.01, 1.01)
+                facet_grid = sns.displot(
+                    hans_train_df,
+                    x="datapoint_true_prob",
+                    hue="label",
+                    bins=50,
+                    binrange=xlim,
+                    log_scale=(False, True),
+                    palette="deep",
+                    height=2.0,
+                    aspect=3.5,
+                )
+                facet_grid.set_axis_labels(f"probability of correct classification, $\gamma={gamma}$", "count")
+                # v_line_position = 0.5
+                # facet_grid.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
+                # v_line_position = 1 / 3
+                # facet_grid.axes.flat[0].axvline(x=v_line_position, color='b', linestyle=':')
+                plt.gca().set_xlim(xlim)
+
+                plot_id = f"{esm.pretty_name} -- Plot B -- HANS.train -- v1 all -- {gamma:2.1f} -- {run_id:<70}.pdf"
+                plot_id = plot_id.replace("epfl-optml/nli/", "")
+                plt.savefig(os.path.join(plots_dir_path, plot_id))
+                plt.close()
+
+                # Test, HANS all
+                xlim = (-0.01, 1.01)
+                facet_grid = sns.displot(
+                    hans_validation_df,
+                    x="datapoint_true_prob",
+                    hue="label",
+                    bins=100,
+                    binrange=xlim,
+                    log_scale=(False, True),
+                    palette="deep",
+                    height=2.0,
+                    aspect=3.5,
+                )
+                facet_grid.set_axis_labels(f"probability of correct classification, $\gamma={gamma}$", "count")
+                # v_line_position = 0.5
+                # facet_grid.axes.flat[0].axvline(x=v_line_position, color='r', linestyle=':')
+                # v_line_position = 1 / 3
+                # facet_grid.axes.flat[0].axvline(x=v_line_position, color='b', linestyle=':')
+                plt.gca().set_xlim(xlim)
+
+                plot_id = f"{esm.pretty_name} -- Plot B -- HANS.validation -- v1 all -- {gamma:2.1f} -- {run_id:<70}.pdf"
+                plot_id = plot_id.replace("epfl-optml/nli/", "")
+                plt.savefig(os.path.join(plots_dir_path, plot_id))
+                plt.close()
+
+                # Test, HANS per heuristic
+                xlim = (-0.01, 1.01)
+                facet_grid = sns.displot(
+                    hans_validation_df,
+                    x="datapoint_true_prob",
+                    bins=100,
+                    col="heuristic",
+                    hue="label",
+                    binrange=xlim,
+                    log_scale=(False, True),
+                    palette="deep",
+                    height=2.0,
+                    aspect=2.0,
+                )
+                facet_grid.set_axis_labels(f"probability of correct classification, $\gamma={gamma}$", "count")
+                # v_line_position = 0.5
+                # for ax in facet_grid.axes.flat:
+                #     ax.axvline(x=v_line_position, color='r', linestyle=':')
+                # v_line_position = 1 / 3
+                # for ax in facet_grid.axes.flat:
+                #     ax.axvline(x=v_line_position, color='b', linestyle=':')
+                plt.gca().set_xlim(xlim)
+
+                plot_id = f"{esm.pretty_name} -- Plot B -- HANS.validation -- v2 per heuristic -- {gamma:2.1f} -- {run_id:<70}.pdf"
                 plot_id = plot_id.replace("epfl-optml/nli/", "")
                 plt.savefig(os.path.join(plots_dir_path, plot_id))
                 plt.close()
@@ -330,7 +524,7 @@ def process_results(
                 ##################
                 # Test v1
                 xlim = (5e-6, 5e1)
-                sns.displot(
+                facet_grid = sns.displot(
                     mnli_matched_df,
                     x="datapoint_loss",
                     hue="hardness",
@@ -339,9 +533,10 @@ def process_results(
                     palette="deep",
                     kind="ecdf",
                     # row="gamma",
-                    height=3,
-                    aspect=3,
+                    height=2.0,
+                    aspect=3.5,
                 )
+                facet_grid.set_axis_labels(f"loss, $\gamma={gamma}$", "proportion")
                 plt.gca().set_xlim(xlim)
 
                 plot_id = f"{esm.pretty_name} -- Plot C -- MNLI.valid.M -- v1 ECDF Log-Lin -- {gamma:2.1f} -- {run_id:<70}.pdf"
@@ -350,8 +545,8 @@ def process_results(
                 plt.close()
 
                 # Test v2
-                xlim = (-0.1, 12)
-                sns.displot(
+                xlim = (-0.15, 12)
+                facet_grid = sns.displot(
                     mnli_matched_df,
                     x="datapoint_loss",
                     hue="hardness",
@@ -360,9 +555,10 @@ def process_results(
                     palette="deep",
                     kind="ecdf",
                     # row="gamma",
-                    height=3,
-                    aspect=3,
+                    height=2.0,
+                    aspect=3.5,
                 )
+                facet_grid.set_axis_labels(f"loss, $\gamma={gamma}$", "proportion")
                 plt.gca().set_xlim(xlim)
 
                 plot_id = f"{esm.pretty_name} -- Plot C -- MNLI.valid.M -- v2 ECDF Lin-Lin -- {gamma:2.1f} -- {run_id:<70}.pdf"
@@ -371,8 +567,8 @@ def process_results(
                 plt.close()
 
                 # Test v3
-                xlim = (-0.1, 12)
-                sns.displot(
+                xlim = (-0.15, 12)
+                facet_grid = sns.displot(
                     mnli_matched_df,
                     x="ce_loss",
                     hue="hardness",
@@ -381,9 +577,10 @@ def process_results(
                     palette="deep",
                     kind="ecdf",
                     # row="gamma",
-                    height=3,
-                    aspect=3,
+                    height=2.0,
+                    aspect=3.5,
                 )
+                facet_grid.set_axis_labels(f"normalized loss, $\gamma={gamma}$", "proportion")
                 plt.gca().set_xlim(xlim)
 
                 plot_id = f"{esm.pretty_name} -- Plot C -- MNLI.valid.M -- v3 CE-LOSS ECDF Lin-Lin -- {gamma:2.1f} -- {run_id:<70}.pdf"
@@ -454,7 +651,7 @@ RUN_PATHS = [
     # "epfl-optml/nli/S1.11_model-bert_dataset-snli_gamma-5.0_seed-72_09.25_03.02.37",
     # "epfl-optml/nli/S1.12_model-bert_dataset-snli_gamma-10.0_seed-72_09.25_03.16.14",
     ## S02
-    "epfl-optml/nli/S2.02_model-bert_dataset-mnli_gamma-0.0_seed-36_09.26_06.48.33",
+    # "epfl-optml/nli/S2.02_model-bert_dataset-mnli_gamma-0.0_seed-36_09.26_06.48.33",
     # "epfl-optml/nli/S2.03_model-bert_dataset-mnli_gamma-0.0_seed-180_09.26_03.37.35",
     # "epfl-optml/nli/S2.04_model-bert_dataset-mnli_gamma-0.0_seed-360_09.26_05.57.53",
     # "epfl-optml/nli/S2.05_model-bert_dataset-mnli_gamma-0.0_seed-54_09.26_07.10.18",
@@ -514,42 +711,42 @@ RUN_PATHS = [
     # "epfl-optml/nli/S2.59_model-bert_dataset-snli_gamma-10.0_seed-360_09.26_06.48.24",
     # "epfl-optml/nli/S2.60_model-bert_dataset-snli_gamma-10.0_seed-54_09.26_07.41.02",
     ## S03
-    # "epfl-optml/nli/S3.01_model-bert_nhans-100_gamma-0.0_seed-72_09.28_13.56.33",
+    "epfl-optml/nli/S3.01_model-bert_nhans-100_gamma-0.0_seed-72_09.28_13.56.33",
     # "epfl-optml/nli/S3.02_model-bert_nhans-100_gamma-0.0_seed-36_09.28_06.21.59",
     # "epfl-optml/nli/S3.03_model-bert_nhans-100_gamma-0.0_seed-180_09.28_01.33.07",
     # "epfl-optml/nli/S3.04_model-bert_nhans-100_gamma-0.0_seed-360_09.28_04.50.36",
     # "epfl-optml/nli/S3.05_model-bert_nhans-100_gamma-0.0_seed-54_09.28_07.36.20",
-    # "epfl-optml/nli/S3.06_model-bert_nhans-100_gamma-1.0_seed-72_09.28_13.56.15",
+    "epfl-optml/nli/S3.06_model-bert_nhans-100_gamma-1.0_seed-72_09.28_13.56.15",
     # "epfl-optml/nli/S3.07_model-bert_nhans-100_gamma-1.0_seed-36_09.28_06.24.24",
     # "epfl-optml/nli/S3.08_model-bert_nhans-100_gamma-1.0_seed-180_09.28_01.33.07",
     # "epfl-optml/nli/S3.09_model-bert_nhans-100_gamma-1.0_seed-360_09.28_04.50.36",
     # "epfl-optml/nli/S3.10_model-bert_nhans-100_gamma-1.0_seed-54_09.28_07.49.34",
-    # "epfl-optml/nli/S3.11_model-bert_nhans-100_gamma-2.0_seed-72_09.28_13.58.43",
+    "epfl-optml/nli/S3.11_model-bert_nhans-100_gamma-2.0_seed-72_09.28_13.58.43",
     # "epfl-optml/nli/S3.12_model-bert_nhans-100_gamma-2.0_seed-36_09.28_06.38.38",
     # "epfl-optml/nli/S3.13_model-bert_nhans-100_gamma-2.0_seed-180_09.28_01.57.16",
     # "epfl-optml/nli/S3.14_model-bert_nhans-100_gamma-2.0_seed-360_09.28_05.09.04",
     # "epfl-optml/nli/S3.15_model-bert_nhans-100_gamma-2.0_seed-54_09.28_07.59.55",
-    # "epfl-optml/nli/S3.16_model-bert_nhans-100_gamma-5.0_seed-72_09.28_14.00.15",
+    "epfl-optml/nli/S3.16_model-bert_nhans-100_gamma-5.0_seed-72_09.28_14.00.15",
     # # 17
     # # 18
     # "epfl-optml/nli/S3.19_model-bert_nhans-100_gamma-5.0_seed-360_09.28_05.13.51",
     # "epfl-optml/nli/S3.20_model-bert_nhans-100_gamma-5.0_seed-54_09.28_08.01.23",
-    # "epfl-optml/nli/S3.21_model-bert_nhans-1000_gamma-0.0_seed-72_09.28_14.06.45",
+    "epfl-optml/nli/S3.21_model-bert_nhans-1000_gamma-0.0_seed-72_09.28_14.06.45",
     # "epfl-optml/nli/S3.22_model-bert_nhans-1000_gamma-0.0_seed-36_09.28_07.01.06",
     # "epfl-optml/nli/S3.23_model-bert_nhans-1000_gamma-0.0_seed-180_09.28_01.58.09",
     # "epfl-optml/nli/S3.24_model-bert_nhans-1000_gamma-0.0_seed-360_09.28_05.15.53",
     # "epfl-optml/nli/S3.25_model-bert_nhans-1000_gamma-0.0_seed-54_09.28_08.01.23",
-    # "epfl-optml/nli/S3.26_model-bert_nhans-1000_gamma-1.0_seed-72_09.28_14.06.46",
+    "epfl-optml/nli/S3.26_model-bert_nhans-1000_gamma-1.0_seed-72_09.28_14.06.46",
     # "epfl-optml/nli/S3.27_model-bert_nhans-1000_gamma-1.0_seed-36_09.28_07.01.42",
     # "epfl-optml/nli/S3.28_model-bert_nhans-1000_gamma-1.0_seed-180_09.28_01.58.14",
     # "epfl-optml/nli/S3.29_model-bert_nhans-1000_gamma-1.0_seed-360_09.28_05.35.24",
     # "epfl-optml/nli/S3.30_model-bert_nhans-1000_gamma-1.0_seed-54_09.28_08.03.53",
-    # "epfl-optml/nli/S3.31_model-bert_nhans-1000_gamma-2.0_seed-72_09.28_14.09.44",
+    "epfl-optml/nli/S3.31_model-bert_nhans-1000_gamma-2.0_seed-72_09.28_14.09.44",
     # "epfl-optml/nli/S3.32_model-bert_nhans-1000_gamma-2.0_seed-36_09.28_07.28.12",
     # "epfl-optml/nli/S3.33_model-bert_nhans-1000_gamma-2.0_seed-180_09.28_01.58.47",
     # "epfl-optml/nli/S3.34_model-bert_nhans-1000_gamma-2.0_seed-360_09.28_06.03.32",
     # "epfl-optml/nli/S3.35_model-bert_nhans-1000_gamma-2.0_seed-54_09.28_08.08.30",
-    # "epfl-optml/nli/S3.36_model-bert_nhans-1000_gamma-5.0_seed-72_09.28_14.09.44",
+    "epfl-optml/nli/S3.36_model-bert_nhans-1000_gamma-5.0_seed-72_09.28_14.09.44",
     # "epfl-optml/nli/S3.37_model-bert_nhans-1000_gamma-5.0_seed-36_09.28_07.30.50",
     # "epfl-optml/nli/S3.38_model-bert_nhans-1000_gamma-5.0_seed-180_09.28_03.56.56",
     # "epfl-optml/nli/S3.39_model-bert_nhans-1000_gamma-5.0_seed-360_09.28_06.12.37",
