@@ -1,7 +1,7 @@
 """
-Script that collects the results from CSV files from InferSent logs and generates the summaries we are interested in.
+Script that loads the CSV result summaries and computes the relevant standard deviations.
 
-Run like: `python -m scripts.collect_results_infersent_csv`
+Run like: `python -m scripts.collect_result_stddev`
 """
 import argparse
 import os.path

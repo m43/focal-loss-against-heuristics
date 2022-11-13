@@ -1,5 +1,5 @@
 """
-Script that evaluates takes a BERT checkpoint from WANDB and evaluates it on HANS.
+Script that evaluates a BERT checkpoint from WANDB and evaluates it on HANS.
 The HANS dataset is loaded by hand (i.e., without using 🤗HuggingFace datasets).
 
 Run for example like: `python -m scripts.evaluate_bert_wandb_checkpoint_on_hans`
