@@ -130,12 +130,12 @@ EARLY_STOPPING_METRICS = [
 REPORT_METRICS = [
     ReportMetric("MNLI.train.M.acc", "mnli_train", "mean", "datapoint_true_pred", None, None, None),
     ReportMetric("HANS.valid.acc", "hans_validation", "mean", "datapoint_true_pred", None, None, None),
-    # ReportMetric("HANS.valid.E.LO.acc", "hans_validation", "mean", "datapoint_true_pred", None, 0, "lexical_overlap"),
-    # ReportMetric("HANS.valid.E.S.acc", "hans_validation", "mean", "datapoint_true_pred", None, 0, "subsequence"),
-    # ReportMetric("HANS.valid.E.C.acc", "hans_validation", "mean", "datapoint_true_pred", None, 0, "constituent"),
-    # ReportMetric("HANS.valid.NE.LO.acc", "hans_validation", "mean", "datapoint_true_pred", None, 1, "lexical_overlap"),
-    # ReportMetric("HANS.valid.NE.S.acc", "hans_validation", "mean", "datapoint_true_pred", None, 1, "subsequence"),
-    # ReportMetric("HANS.valid.NE.C.acc", "hans_validation", "mean", "datapoint_true_pred", None, 1, "constituent"),
+    ReportMetric("HANS.valid.E.LO.acc", "hans_validation", "mean", "datapoint_true_pred", None, 0, "lexical_overlap"),
+    ReportMetric("HANS.valid.E.S.acc", "hans_validation", "mean", "datapoint_true_pred", None, 0, "subsequence"),
+    ReportMetric("HANS.valid.E.C.acc", "hans_validation", "mean", "datapoint_true_pred", None, 0, "constituent"),
+    ReportMetric("HANS.valid.NE.LO.acc", "hans_validation", "mean", "datapoint_true_pred", None, 1, "lexical_overlap"),
+    ReportMetric("HANS.valid.NE.S.acc", "hans_validation", "mean", "datapoint_true_pred", None, 1, "subsequence"),
+    ReportMetric("HANS.valid.NE.C.acc", "hans_validation", "mean", "datapoint_true_pred", None, 1, "constituent"),
     ReportMetric("MNLI.valid.M.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", None, None, None),
     # ReportMetric("MNLI.valid.M.EASY.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", "easy", None, None),
     ReportMetric("MNLI.valid.M.HARD.acc", "mnli_validation_matched", "mean", "datapoint_true_pred", "hard", None, None),
@@ -711,46 +711,46 @@ RUN_PATHS = [
     # "epfl-optml/nli/S2.59_model-bert_dataset-snli_gamma-10.0_seed-360_09.26_06.48.24",
     # "epfl-optml/nli/S2.60_model-bert_dataset-snli_gamma-10.0_seed-54_09.26_07.41.02",
     ## S03
-    "epfl-optml/nli/S3.01_model-bert_nhans-100_gamma-0.0_seed-72_09.28_13.56.33",
+    # "epfl-optml/nli/S3.01_model-bert_nhans-100_gamma-0.0_seed-72_09.28_13.56.33",
     # "epfl-optml/nli/S3.02_model-bert_nhans-100_gamma-0.0_seed-36_09.28_06.21.59",
     # "epfl-optml/nli/S3.03_model-bert_nhans-100_gamma-0.0_seed-180_09.28_01.33.07",
     # "epfl-optml/nli/S3.04_model-bert_nhans-100_gamma-0.0_seed-360_09.28_04.50.36",
     # "epfl-optml/nli/S3.05_model-bert_nhans-100_gamma-0.0_seed-54_09.28_07.36.20",
-    "epfl-optml/nli/S3.06_model-bert_nhans-100_gamma-1.0_seed-72_09.28_13.56.15",
+    # "epfl-optml/nli/S3.06_model-bert_nhans-100_gamma-1.0_seed-72_09.28_13.56.15",
     # "epfl-optml/nli/S3.07_model-bert_nhans-100_gamma-1.0_seed-36_09.28_06.24.24",
     # "epfl-optml/nli/S3.08_model-bert_nhans-100_gamma-1.0_seed-180_09.28_01.33.07",
     # "epfl-optml/nli/S3.09_model-bert_nhans-100_gamma-1.0_seed-360_09.28_04.50.36",
     # "epfl-optml/nli/S3.10_model-bert_nhans-100_gamma-1.0_seed-54_09.28_07.49.34",
-    "epfl-optml/nli/S3.11_model-bert_nhans-100_gamma-2.0_seed-72_09.28_13.58.43",
+    # "epfl-optml/nli/S3.11_model-bert_nhans-100_gamma-2.0_seed-72_09.28_13.58.43",
     # "epfl-optml/nli/S3.12_model-bert_nhans-100_gamma-2.0_seed-36_09.28_06.38.38",
     # "epfl-optml/nli/S3.13_model-bert_nhans-100_gamma-2.0_seed-180_09.28_01.57.16",
     # "epfl-optml/nli/S3.14_model-bert_nhans-100_gamma-2.0_seed-360_09.28_05.09.04",
     # "epfl-optml/nli/S3.15_model-bert_nhans-100_gamma-2.0_seed-54_09.28_07.59.55",
     "epfl-optml/nli/S3.16_model-bert_nhans-100_gamma-5.0_seed-72_09.28_14.00.15",
-    # # 17
-    # # 18
-    # "epfl-optml/nli/S3.19_model-bert_nhans-100_gamma-5.0_seed-360_09.28_05.13.51",
-    # "epfl-optml/nli/S3.20_model-bert_nhans-100_gamma-5.0_seed-54_09.28_08.01.23",
-    "epfl-optml/nli/S3.21_model-bert_nhans-1000_gamma-0.0_seed-72_09.28_14.06.45",
+    "epfl-optml/nli/S3.17_model-bert_nhans-100_gamma-5.0_seed-36_09.28_20.28.04",
+    "epfl-optml/nli/S3.18_model-bert_nhans-100_gamma-5.0_seed-180_09.29_00.11.19",
+    "epfl-optml/nli/S3.19_model-bert_nhans-100_gamma-5.0_seed-360_09.28_05.13.51",
+    "epfl-optml/nli/S3.20_model-bert_nhans-100_gamma-5.0_seed-54_09.28_08.01.23",
+    # "epfl-optml/nli/S3.21_model-bert_nhans-1000_gamma-0.0_seed-72_09.28_14.06.45",
     # "epfl-optml/nli/S3.22_model-bert_nhans-1000_gamma-0.0_seed-36_09.28_07.01.06",
     # "epfl-optml/nli/S3.23_model-bert_nhans-1000_gamma-0.0_seed-180_09.28_01.58.09",
     # "epfl-optml/nli/S3.24_model-bert_nhans-1000_gamma-0.0_seed-360_09.28_05.15.53",
     # "epfl-optml/nli/S3.25_model-bert_nhans-1000_gamma-0.0_seed-54_09.28_08.01.23",
-    "epfl-optml/nli/S3.26_model-bert_nhans-1000_gamma-1.0_seed-72_09.28_14.06.46",
+    # "epfl-optml/nli/S3.26_model-bert_nhans-1000_gamma-1.0_seed-72_09.28_14.06.46",
     # "epfl-optml/nli/S3.27_model-bert_nhans-1000_gamma-1.0_seed-36_09.28_07.01.42",
     # "epfl-optml/nli/S3.28_model-bert_nhans-1000_gamma-1.0_seed-180_09.28_01.58.14",
     # "epfl-optml/nli/S3.29_model-bert_nhans-1000_gamma-1.0_seed-360_09.28_05.35.24",
     # "epfl-optml/nli/S3.30_model-bert_nhans-1000_gamma-1.0_seed-54_09.28_08.03.53",
-    "epfl-optml/nli/S3.31_model-bert_nhans-1000_gamma-2.0_seed-72_09.28_14.09.44",
+    # "epfl-optml/nli/S3.31_model-bert_nhans-1000_gamma-2.0_seed-72_09.28_14.09.44",
     # "epfl-optml/nli/S3.32_model-bert_nhans-1000_gamma-2.0_seed-36_09.28_07.28.12",
     # "epfl-optml/nli/S3.33_model-bert_nhans-1000_gamma-2.0_seed-180_09.28_01.58.47",
     # "epfl-optml/nli/S3.34_model-bert_nhans-1000_gamma-2.0_seed-360_09.28_06.03.32",
     # "epfl-optml/nli/S3.35_model-bert_nhans-1000_gamma-2.0_seed-54_09.28_08.08.30",
     "epfl-optml/nli/S3.36_model-bert_nhans-1000_gamma-5.0_seed-72_09.28_14.09.44",
-    # "epfl-optml/nli/S3.37_model-bert_nhans-1000_gamma-5.0_seed-36_09.28_07.30.50",
-    # "epfl-optml/nli/S3.38_model-bert_nhans-1000_gamma-5.0_seed-180_09.28_03.56.56",
-    # "epfl-optml/nli/S3.39_model-bert_nhans-1000_gamma-5.0_seed-360_09.28_06.12.37",
-    # "epfl-optml/nli/S3.40_model-bert_nhans-1000_gamma-5.0_seed-54_09.28_13.55.24",
+    "epfl-optml/nli/S3.37_model-bert_nhans-1000_gamma-5.0_seed-36_09.28_07.30.50",
+    "epfl-optml/nli/S3.38_model-bert_nhans-1000_gamma-5.0_seed-180_09.28_03.56.56",
+    "epfl-optml/nli/S3.39_model-bert_nhans-1000_gamma-5.0_seed-360_09.28_06.12.37",
+    "epfl-optml/nli/S3.40_model-bert_nhans-1000_gamma-5.0_seed-54_09.28_13.55.24",
     # "epfl-optml/nli/S3.41_model-bert_nhans-5000_gamma-0.0_seed-72_09.28_14.11.15",
     # # 42-45
 ]
@@ -758,12 +758,16 @@ RUN_PATHS = [
 if __name__ == '__main__':
     nice_print(HORSE)
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cached_runs_pickle_path', type=str, default="logs/cached_runs_s02_plots.pkl",
+    parser.add_argument('--cached_runs_pickle_path', type=str, default="logs/cached_runs_s03_update.pkl",
                         help="If not None and if pickle file exists,"
                              "load the runs from the pickle file instead of querying wandb again.")
-    parser.add_argument('--results_dir', type=str, default="logs/S02.plots",
-                        help="Where to save the computed results")
+    parser.add_argument('--results_dir', type=str, default="logs/S03.update", help="Where to save the computed results")
+    parser.add_argument('--no_latex', action="store_true", help="Whether to use latex for plots.")
     args = parser.parse_args()
+
+    plt.rc('font', **{'family': 'serif', 'serif': ['Computer Modern Roman']})
+    if not args.no_latex:
+        plt.rc('text', usetex=True)
 
     if args.cached_runs_pickle_path is not None and os.path.exists(args.cached_runs_pickle_path):
         with open(args.cached_runs_pickle_path, "rb") as f:
