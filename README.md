@@ -15,7 +15,7 @@ There is no such thing as a perfect dataset. In some datasets, deep neural netwo
   - [Project structure](#project-structure)
   - [License](#license)
 
-## Environment set-up
+## Environment Set-up
 
 This codebase has been tested with the packages and versions specified in `requirements.txt` and Python 3.9 on Manjaro Linux and Red Hat Enterprise Linux Server 7.7 (Maipo).
 
@@ -41,7 +41,7 @@ Finally, install the required packages:
 pip install -r requirements.txt
 ```
 
-## Reproducing results
+## Reproducing Results
 
 To reproduce any of the experiments, find the related run configuration in [`scripts/sbatch`](scripts/sbatch). The correspondence between the experimental results shown in the paper and the run configurations is described below. It can also be reverse-engineered from [`scripts/generate_sbatch.py`](scripts/generate_sbatch.py), which was used to generate the experimental run configurations.
 
@@ -79,7 +79,7 @@ python -m src.main \
   --num_hans_train_examples 0 \
 ```
 
-## Experiment logs
+## Experiment Logs
 
 You can find the logs of all BERT experiments publicly available on [Weights & Biases](https://wandb.ai/epfl-optml/nli). For example, the baseline run with the best hyperparameters is [S2.21](https://wandb.ai/epfl-optml/nli/runs/S2.21_model-bert_dataset-mnli_gamma-5.0_seed-72_09.26_08.36.02). To filter interesting runs, you can use a regex like `S2` to filter the BERT runs related to the _Impact of focal loss_ experiment. Experiments that used InferSent did not use wandb for logging results but dumped the results to disk.
 
