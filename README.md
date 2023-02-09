@@ -3,7 +3,7 @@
 [Frano Rajič](https://m43.github.io/), [Ivan Stresec](https://www.github.com/istresec), [Axel Marmet](https://github.com/axelmarmet), [Tim Poštuvan](https://github.com/timpostuvan)
 
 [![Python 3.9](https://img.shields.io/badge/python-3.9-blue.svg)](https://www.python.org/downloads/release/python-390/)
-[![MIT License](https://img.shields.io/apm/l/atomic-design-ui.svg?)](https://github.com/m43/optml-proj/blob/master/LICENSE)
+[![MIT License](https://img.shields.io/github/license/m43/focal-loss-against-heuristics)](https://github.com/m43/focal-loss-against-heuristics/blob/main/LICENSE)
 
 There is no such thing as a perfect dataset. In some datasets, deep neural networks discover underlying heuristics that allow them to take shortcuts in the learning process, resulting in poor generalization capability. Instead of using standard cross-entropy, we explore whether a modulated version of cross-entropy called focal loss can constrain the model so as not to use heuristics and improve generalization performance. Our experiments in natural language inference show that focal loss has a regularizing impact on the learning process, increasing accuracy on out-of-distribution data, but slightly decreasing performance on in-distribution data. Despite the improved out-of-distribution performance, we demonstrate the shortcomings of focal loss and its inferiority in comparison to the performance of methods such as unbiased focal loss and self-debiasing ensembles.
 
